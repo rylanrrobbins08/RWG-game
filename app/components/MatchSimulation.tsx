@@ -931,7 +931,9 @@ export default function MatchSimulation({
         youWon: matchResult.won,
         yourScore: matchResult.yourScore,
         opponentScore: matchResult.opponentScore,
-      }).then(() => persistGameNow());
+      }).then(() => {
+        void persistGameNow();
+      });
     }
 
     onMatchComplete?.(matchResult.won);

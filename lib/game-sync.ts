@@ -154,12 +154,12 @@ export function initGameSync() {
 }
 
 /** Flush a save immediately (e.g. right after Create Wrestler). */
-export function persistGameNow() {
-  if (!useGameStore.getState().careerSelected) return Promise.resolve();
+export async function persistGameNow(): Promise<void> {
+  if (!useGameStore.getState().careerSelected) return;
   persistGameLocally();
   if (saveTimer) {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
-  return persistGameToSupabase(true);
+  await persistGameToSupabase(true);
 }
