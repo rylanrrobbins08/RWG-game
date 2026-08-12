@@ -118,7 +118,7 @@ export default function Calendar() {
             {style.label}
           </span>
           {(event.major || event.type === "major") && (
-            <span className="rounded bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-background">
+            <span className="rounded bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-accent-foreground">
               Major
             </span>
           )}

@@ -1279,7 +1279,7 @@ export default function MatchSimulation({
                         key={pos}
                         className={`rounded-md border px-2.5 py-1 font-display text-[10px] font-semibold uppercase tracking-[0.12em] ${
                           active
-                            ? "border-accent bg-accent text-background"
+                            ? "border-accent bg-accent text-accent-foreground"
                             : "border-panel-border/80 bg-background/30 text-muted"
                         }`}
                       >
@@ -1584,7 +1584,7 @@ export default function MatchSimulation({
                 type="button"
                 onClick={lockInExchange}
                 disabled={!canLockIn}
-                className="mt-5 w-full rounded-md bg-accent px-5 py-3.5 font-display text-base font-semibold uppercase tracking-[0.08em] text-background transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+                className="mt-5 w-full rounded-md bg-accent px-5 py-3.5 font-display text-base font-semibold uppercase tracking-[0.08em] text-accent-foreground transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Lock In Exchange
               </button>
@@ -1869,7 +1869,7 @@ export default function MatchSimulation({
                 <button
                   type="button"
                   onClick={afterMatchAction.onClick}
-                  className="mt-3 block w-full rounded-md bg-accent px-5 py-3.5 text-center font-display text-sm font-semibold uppercase tracking-[0.08em] text-background transition hover:bg-accent-hover"
+                  className="mt-3 block w-full rounded-md bg-accent px-5 py-3.5 text-center font-display text-sm font-semibold uppercase tracking-[0.08em] text-accent-foreground transition hover:bg-accent-hover"
                 >
                   {afterMatchAction.label}
                 </button>
@@ -1882,7 +1882,7 @@ export default function MatchSimulation({
                 </p>
                 <Link
                   href="/calendar"
-                  className="mt-3 block w-full rounded-md bg-accent px-5 py-3.5 text-center font-display text-sm font-semibold uppercase tracking-[0.08em] text-background transition hover:bg-accent-hover"
+                  className="mt-3 block w-full rounded-md bg-accent px-5 py-3.5 text-center font-display text-sm font-semibold uppercase tracking-[0.08em] text-accent-foreground transition hover:bg-accent-hover"
                 >
                   Back to Calendar
                 </Link>

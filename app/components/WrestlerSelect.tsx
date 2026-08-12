@@ -3,41 +3,70 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  canCreateCareer,
-  listCareers,
   MAX_CAREERS,
   type CareerListItem,
 } from "@/lib/career-slots";
-import { prepareCareerStorage, loadCareerIntoStore } from "@/lib/local-save";
+import {
+  prepareCareerStorage,
+  loadCareerIntoStore,
+  hydrateCareerFromSavedGame,
+  mergeSavedGameIntoSlots,
+} from "@/lib/local-save";
 import { formatHometown } from "@/lib/wrestler-profile";
 import { useGameStore } from "@/lib/game-store";
+import { savedGameToListItem, type SavedGame } from "@/lib/wrestlers";
 import WrestlerAvatar from "./WrestlerAvatar";
 
 /** First screen after load — pick a career slot or create a new wrestler. */
-export default function WrestlerSelect() {
+export default function WrestlerSelect({
+  initialWrestlers = [],
+  loadError = null,
+}: {
+  initialWrestlers?: SavedGame[];
+  loadError?: string | null;
+}) {
   const router = useRouter();
   const clearCareerSelection = useGameStore(
     (state) => state.clearCareerSelection,
   );
-  const [careers, setCareers] = useState<CareerListItem[]>([]);
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [careers, setCareers] = useState<CareerListItem[]>(() =>
+    initialWrestlers.map(savedGameToListItem),
+  );
+  const [cloudById, setCloudById] = useState<Record<string, SavedGame>>(() => {
+    const byId: Record<string, SavedGame> = {};
+    for (const saved of initialWrestlers) byId[saved.id] = saved;
+    return byId;
+  });
+  const [ready, setReady] = useState(initialWrestlers.length > 0 || Boolean(loadError));
+  const [error, setError] = useState<string | null>(loadError);
 
   useEffect(() => {
     prepareCareerStorage();
     clearCareerSelection();
-    setCareers(listCareers());
+
+    for (const saved of initialWrestlers) {
+      mergeSavedGameIntoSlots(saved);
+    }
+
+    setCloudById(
+      Object.fromEntries(initialWrestlers.map((saved) => [saved.id, saved])),
+    );
+    setCareers(initialWrestlers.map(savedGameToListItem));
+    setError(loadError);
     setReady(true);
-  }, [clearCareerSelection]);
+  }, [clearCareerSelection, initialWrestlers, loadError]);
 
-  const canCreate = canCreateCareer();
+  const canCreate = careers.length < MAX_CAREERS;
 
-  function handleSelect(careerId: string) {
+  async function handleSelect(careerId: string) {
     setError(null);
-    const ok = loadCareerIntoStore(careerId);
+    const cloud = cloudById[careerId];
+    const ok = cloud
+      ? hydrateCareerFromSavedGame(cloud)
+      : loadCareerIntoStore(careerId);
     if (!ok) {
       setError("Could not load that career. Try another wrestler.");
-      setCareers(listCareers());
+      setCareers(initialWrestlers.map(savedGameToListItem));
       return;
     }
     router.push("/dashboard");
@@ -55,14 +84,14 @@ export default function WrestlerSelect() {
     <div className="relative min-h-full overflow-hidden">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#1a3d2e_0%,_transparent_55%),linear-gradient(160deg,_#0c0e12_0%,_#12161f_45%,_#0c0e12_100%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#123056_0%,_transparent_55%),linear-gradient(160deg,_#0c0e12_0%,_#12161f_45%,_#0c0e12_100%)]"
       />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{
           backgroundImage:
-            "repeating-linear-gradient(0deg, transparent, transparent 47px, #d4a017 47px, #d4a017 48px), repeating-linear-gradient(90deg, transparent, transparent 47px, #d4a017 47px, #d4a017 48px)",
+            "repeating-linear-gradient(0deg, transparent, transparent 47px, #2f7bff 47px, #2f7bff 48px), repeating-linear-gradient(90deg, transparent, transparent 47px, #2f7bff 47px, #2f7bff 48px)",
         }}
       />
 
@@ -87,7 +116,7 @@ export default function WrestlerSelect() {
         )}
 
         {!ready ? (
-          <p className="text-sm text-muted">Loading careers…</p>
+          <p className="text-sm text-muted">Loading wrestlers…</p>
         ) : careers.length === 0 ? (
           <section className="rwg-card text-center sm:text-left">
             <p className="rwg-label">Empty room</p>

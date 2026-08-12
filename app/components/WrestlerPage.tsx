@@ -157,7 +157,7 @@ export default function WrestlerPage() {
                 onClick={() => applyCut(level)}
                 className={`rounded-md border px-3 py-2.5 font-display text-sm font-semibold uppercase tracking-[0.06em] transition ${
                   selected
-                    ? "border-accent bg-accent text-background"
+                    ? "border-accent bg-accent text-accent-foreground"
                     : "border-panel-border bg-background/40 text-foreground hover:border-accent/60"
                 }`}
               >

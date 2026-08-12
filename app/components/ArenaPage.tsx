@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-/** Shared amber/black arena page wrapper. */
+/** Shared dark arena page wrapper with blue accents. */
 export default function ArenaPage({
   children,
   wide = false,

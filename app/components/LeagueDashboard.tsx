@@ -9,8 +9,16 @@ import {
   topLeagueStandings,
   useGameStore,
 } from "@/lib/game-store";
-import type { WrestlerScoutProfile } from "@/lib/league";
+import type { PlayerLeague, WrestlerScoutProfile } from "@/lib/league";
 import { normalizeLeagueMember } from "@/lib/league";
+import {
+  createLeagueOnline,
+  joinLeagueOnline,
+  listOpenLeagues,
+  loadLeagueRosterOnline,
+} from "@/lib/league-actions";
+import { persistGameNow } from "@/lib/game-sync";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import ArenaPage from "./ArenaPage";
 import WrestlerAvatar from "./WrestlerAvatar";
 import WrestlerScoutModal from "./WrestlerScoutModal";
@@ -44,6 +52,7 @@ export default function LeagueDashboard() {
   const createPlayerLeague = useGameStore((state) => state.createPlayerLeague);
   const joinLeague = useGameStore((state) => state.joinLeague);
   const setActiveLeague = useGameStore((state) => state.setActiveLeague);
+  const applyOnlineLeague = useGameStore((state) => state.applyOnlineLeague);
 
   const activeLeague =
     playerLeagues.find((league) => league.id === activeLeagueId) ??
@@ -60,6 +69,8 @@ export default function LeagueDashboard() {
   const [createName, setCreateName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [openLeagues, setOpenLeagues] = useState<PlayerLeague[]>(OPEN_LEAGUES);
 
   useEffect(() => {
     ensureWeightClassRoster();
@@ -70,6 +81,39 @@ export default function LeagueDashboard() {
       `You're in ${activeLeague.name} · code ${activeLeague.code}. Tap a wrestler to scout attributes.`,
     );
   }, [activeLeague.name, activeLeague.code]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void listOpenLeagues().then((result) => {
+      if (result.ok && result.leagues.length > 0) {
+        setOpenLeagues(result.leagues);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let cancelled = false;
+
+    async function refreshRoster() {
+      const result = await loadLeagueRosterOnline(
+        activeLeagueId,
+        wrestler.weightClass,
+      );
+      if (cancelled || !result.ok) return;
+      applyOnlineLeague(result.league, result.roster);
+    }
+
+    void refreshRoster();
+    const timer = window.setInterval(() => {
+      void refreshRoster();
+    }, 12000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeLeagueId, applyOnlineLeague, wrestler.weightClass]);
 
   const playerAttrs = useMemo(
     () => getEffectiveAttributes(wrestler),
@@ -101,8 +145,8 @@ export default function LeagueDashboard() {
 
   const openToJoin = useMemo(() => {
     const joined = new Set(playerLeagues.map((league) => league.id));
-    return OPEN_LEAGUES.filter((league) => !joined.has(league.id));
-  }, [playerLeagues]);
+    return openLeagues.filter((league) => !joined.has(league.id));
+  }, [openLeagues, playerLeagues]);
 
   function openScout(profile: WrestlerScoutProfile) {
     setScout(profile);
@@ -136,41 +180,89 @@ export default function LeagueDashboard() {
     setDraft("");
   }
 
-  function handleCreateLeague(event: FormEvent<HTMLFormElement>) {
+  function playerSnapshot() {
+    return {
+      name: wrestler.name,
+      weightClass: wrestler.weightClass,
+      wins: wrestler.record.wins,
+      losses: wrestler.record.losses,
+      attributes: wrestler.attributes,
+    };
+  }
+
+  async function handleCreateLeague(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = createPlayerLeague(createName);
-    if (!result.ok) {
-      setFormError(result.error);
+    setBusy(true);
+    const online = isSupabaseConfigured
+      ? await createLeagueOnline(createName, playerSnapshot())
+      : createPlayerLeague(createName);
+    setBusy(false);
+    if (!online.ok) {
+      setFormError(online.error);
       return;
     }
+    if ("roster" in online) {
+      applyOnlineLeague(online.league, online.roster);
+    }
+    persistGameNow();
     setStatus(
-      `Created ${result.league.name}. Share code ${result.league.code} to invite others.`,
+      `Created ${online.league.name}. Share code ${online.league.code} to invite others.`,
     );
     setModal(null);
   }
 
-  function handleJoinByCode(event: FormEvent<HTMLFormElement>) {
+  async function handleJoinByCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = joinLeague({ code: joinCode });
-    if (!result.ok) {
-      setFormError(result.error);
+    setBusy(true);
+    const online = isSupabaseConfigured
+      ? await joinLeagueOnline({ code: joinCode }, playerSnapshot())
+      : joinLeague({ code: joinCode });
+    setBusy(false);
+    if (!online.ok) {
+      setFormError(online.error);
       return;
     }
-    setStatus(`Joined ${result.league.name}. Standings refreshed.`);
+    if ("roster" in online) {
+      applyOnlineLeague(online.league, online.roster);
+    }
+    persistGameNow();
+    setStatus(`Joined ${online.league.name}. Standings refreshed.`);
     setModal(null);
   }
 
-  function handleJoinOpen(leagueId: string) {
-    const result = joinLeague({ leagueId });
-    if (!result.ok) {
-      setFormError(result.error);
+  async function handleJoinOpen(leagueId: string) {
+    setBusy(true);
+    const online = isSupabaseConfigured
+      ? await joinLeagueOnline({ leagueId }, playerSnapshot())
+      : joinLeague({ leagueId });
+    setBusy(false);
+    if (!online.ok) {
+      setFormError(online.error);
       return;
     }
-    setStatus(`Joined ${result.league.name}. Standings refreshed.`);
+    if ("roster" in online) {
+      applyOnlineLeague(online.league, online.roster);
+    }
+    persistGameNow();
+    setStatus(`Joined ${online.league.name}. Standings refreshed.`);
     setModal(null);
   }
 
-  function handleSwitchLeague(leagueId: string) {
+  async function handleSwitchLeague(leagueId: string) {
+    if (isSupabaseConfigured) {
+      setBusy(true);
+      const online = await loadLeagueRosterOnline(
+        leagueId,
+        wrestler.weightClass,
+      );
+      setBusy(false);
+      if (online.ok) {
+        applyOnlineLeague(online.league, online.roster);
+        persistGameNow();
+        setStatus(`Switched to ${online.league.name}. Standings updated.`);
+        return;
+      }
+    }
     const result = setActiveLeague(leagueId);
     if (!result.ok) {
       setStatus(result.error);
@@ -422,10 +514,10 @@ export default function LeagueDashboard() {
                 </p>
                 <button
                   type="submit"
-                  disabled={createName.trim().length < 3}
+                  disabled={busy || createName.trim().length < 3}
                   className="rwg-btn rwg-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Create &amp; enter
+                  {busy ? "Saving…" : "Create & enter"}
                 </button>
               </form>
             ) : (
@@ -441,6 +533,7 @@ export default function LeagueDashboard() {
                           <button
                             type="button"
                             onClick={() => handleJoinOpen(league.id)}
+                            disabled={busy}
                             className="flex w-full items-center justify-between gap-3 rounded-md border border-panel-border bg-background/40 px-3 py-2.5 text-left transition hover:border-accent/60"
                           >
                             <span>
@@ -474,15 +567,14 @@ export default function LeagueDashboard() {
                     />
                   </label>
                   <p className="text-xs text-muted">
-                    Try MWST, COAST, IRON, or HLAND — or a code from a league
-                    you created.
+                    Use a code from another player, or join a listed circuit.
                   </p>
                   <button
                     type="submit"
-                    disabled={!joinCode.trim()}
+                    disabled={busy || !joinCode.trim()}
                     className="rwg-btn rwg-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Join with code
+                    {busy ? "Joining…" : "Join with code"}
                   </button>
                 </form>
 

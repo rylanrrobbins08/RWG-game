@@ -1,50 +1,41 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import {
-  signInWithEmail,
-  signUpWithEmail,
-} from "@/lib/supabase/auth";
+import { FormEvent, useState } from "react";
+import { signInWithEmail, signUpWithEmail } from "@/lib/supabase/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 type Mode = "login" | "signup";
 
-export default function AuthForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const nextPath = searchParams.get("next") || "/";
+const CONFIG_MESSAGE =
+  "Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local, then restart the app.";
 
+export default function AuthForm() {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
 
   const configured = isSupabaseConfigured;
 
-  const title = useMemo(
-    () => (mode === "login" ? "Welcome Back" : "Create Account"),
-    [mode],
-  );
+  function goToWrestlerSelect() {
+    window.location.assign("/");
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    setInfo(null);
 
     if (!configured) {
-      setError("Supabase is not configured. Add keys to .env.local first.");
+      setError(CONFIG_MESSAGE);
       return;
     }
 
-    if (mode === "signup" && password !== confirm) {
-      setError("Passwords do not match.");
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError("Enter your email.");
       return;
     }
-
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
       return;
@@ -52,39 +43,67 @@ export default function AuthForm() {
 
     setBusy(true);
 
-    const result =
-      mode === "login"
-        ? await signInWithEmail(email.trim(), password)
-        : await signUpWithEmail(email.trim(), password);
+    try {
+      if (mode === "signup") {
+        const created = await signUpWithEmail(trimmedEmail, password);
+        if (!created.ok) {
+          setError(created.error);
+          return;
+        }
+        if (created.session) {
+          goToWrestlerSelect();
+          return;
+        }
 
-    setBusy(false);
+        const signedIn = await signInWithEmail(trimmedEmail, password);
+        if (signedIn.ok && signedIn.session) {
+          goToWrestlerSelect();
+          return;
+        }
 
-    if (!result.ok) {
-      setError(result.error);
-      return;
+        setError(
+          signedIn.ok
+            ? "Account created. Confirm your email, then log in."
+            : signedIn.error,
+        );
+        setMode("login");
+        return;
+      }
+
+      const result = await signInWithEmail(trimmedEmail, password);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      goToWrestlerSelect();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed. Try again.");
+    } finally {
+      setBusy(false);
     }
-
-    if (mode === "signup") {
-      setInfo("Account created. If email confirmation is on, check your inbox — then log in.");
-      setMode("login");
-      return;
-    }
-
-    router.replace(nextPath);
-    router.refresh();
   }
 
   return (
     <div className="w-full max-w-md rounded-md border border-panel-border bg-panel/90 p-6 sm:p-8">
       <p className="font-display text-sm uppercase tracking-[0.16em] text-accent">RWG</p>
       <h1 className="mt-2 font-display text-3xl font-semibold uppercase tracking-wide text-foreground">
-        {title}
+        Login / Sign Up
       </h1>
       <p className="mt-2 text-sm text-muted">
         {mode === "login"
-          ? "Log in to load your wrestler and sync progress."
-          : "Sign up to save your career to the cloud."}
+          ? "Enter your email and password to play."
+          : "Create an account to save your wrestlers."}
       </p>
+
+      {!configured && (
+        <p
+          role="status"
+          className="mt-4 rounded-md border border-danger/40 bg-danger/10 px-3 py-3 text-sm text-[#e8a090]"
+        >
+          {CONFIG_MESSAGE}
+        </p>
+      )}
 
       <div className="mt-5 grid grid-cols-2 gap-2">
         <button
@@ -92,26 +111,24 @@ export default function AuthForm() {
           onClick={() => {
             setMode("login");
             setError(null);
-            setInfo(null);
           }}
           className={`rounded-md px-3 py-2 font-display text-sm uppercase tracking-[0.1em] transition ${
             mode === "login"
-              ? "bg-accent text-background"
+              ? "bg-accent text-accent-foreground"
               : "border border-panel-border text-muted hover:text-foreground"
           }`}
         >
-          Login
+          Log In
         </button>
         <button
           type="button"
           onClick={() => {
             setMode("signup");
             setError(null);
-            setInfo(null);
           }}
           className={`rounded-md px-3 py-2 font-display text-sm uppercase tracking-[0.1em] transition ${
             mode === "signup"
-              ? "bg-accent text-background"
+              ? "bg-accent text-accent-foreground"
               : "border border-panel-border text-muted hover:text-foreground"
           }`}
         >
@@ -130,7 +147,8 @@ export default function AuthForm() {
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
-            className="rounded-md border border-panel-border bg-background/60 px-3 py-2.5 text-foreground outline-none focus:border-accent"
+            placeholder="you@email.com"
+            className="rounded-md border border-panel-border bg-background/60 px-3 py-2.5 text-foreground outline-none placeholder:text-muted/60 focus:border-accent"
           />
         </label>
 
@@ -145,53 +163,28 @@ export default function AuthForm() {
             required
             minLength={6}
             autoComplete={mode === "login" ? "current-password" : "new-password"}
-            className="rounded-md border border-panel-border bg-background/60 px-3 py-2.5 text-foreground outline-none focus:border-accent"
+            placeholder="At least 6 characters"
+            className="rounded-md border border-panel-border bg-background/60 px-3 py-2.5 text-foreground outline-none placeholder:text-muted/60 focus:border-accent"
           />
         </label>
 
-        {mode === "signup" && (
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-display text-xs uppercase tracking-[0.12em] text-muted">
-              Confirm Password
-            </span>
-            <input
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              minLength={6}
-              autoComplete="new-password"
-              className="rounded-md border border-panel-border bg-background/60 px-3 py-2.5 text-foreground outline-none focus:border-accent"
-            />
-          </label>
-        )}
-
         {error && (
-          <p className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-[#e8a090]">
+          <p
+            role="alert"
+            className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-[#e8a090]"
+          >
             {error}
-          </p>
-        )}
-        {info && (
-          <p className="rounded-md border border-mat/50 bg-mat/20 px-3 py-2 text-sm text-[#8fd4b0]">
-            {info}
           </p>
         )}
 
         <button
           type="submit"
           disabled={busy || !configured}
-          className="rounded-md bg-accent px-5 py-3 font-display text-base font-semibold uppercase tracking-[0.08em] text-background transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-md bg-accent px-5 py-3 font-display text-base font-semibold uppercase tracking-[0.08em] text-accent-foreground transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy ? "Please wait…" : mode === "login" ? "Log In" : "Sign Up"}
         </button>
       </form>
-
-      {!configured && (
-        <p className="mt-4 text-xs text-muted">
-          Copy <code className="text-foreground">.env.local.example</code> to{" "}
-          <code className="text-foreground">.env.local</code> and add your Supabase keys.
-        </p>
-      )}
     </div>
   );
 }

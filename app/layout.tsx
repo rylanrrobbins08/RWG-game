@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Barlow, Oswald } from "next/font/google";
 import AppShell from "./components/AppShell";
+import AuthGate from "./components/AuthGate";
 import "./globals.css";
 
 const barlow = Barlow({
@@ -34,7 +35,9 @@ export default function RootLayout({
       className={`${barlow.variable} ${oswald.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col font-sans">
-        <AppShell>{children}</AppShell>
+        <AuthGate>
+          <AppShell>{children}</AppShell>
+        </AuthGate>
       </body>
     </html>
   );

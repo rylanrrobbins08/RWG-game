@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   ATTRIBUTES,
@@ -18,7 +17,6 @@ import AttributeLabel from "./AttributeLabel";
 import WrestlerAvatar from "./WrestlerAvatar";
 
 export default function SettingsProfile() {
-  const router = useRouter();
   const wrestler = useGameStore((state) => state.wrestler);
   const week = useGameStore((state) => state.week);
   const season = useGameStore((state) => state.season);
@@ -90,20 +88,11 @@ export default function SettingsProfile() {
 
   async function handleLogout() {
     setLoggingOut(true);
-    setStatus("Signing out…");
-    const result = await signOut();
+    setStatus("Logging out…");
+    await signOut();
     setUserId(null);
     setEmail(null);
-    setLoggingOut(false);
-
-    if (!result.ok && isSupabaseConfigured) {
-      setStatus(result.error);
-      return;
-    }
-
-    setStatus("Signed out.");
-    router.replace(isSupabaseConfigured ? "/auth" : "/");
-    router.refresh();
+    window.location.assign("/auth");
   }
 
   return (
@@ -126,9 +115,19 @@ export default function SettingsProfile() {
             </p>
           </div>
         </div>
-        <p className="rwg-card-inset max-w-md text-sm text-muted" role="status">
-          {status}
-        </p>
+        <div className="flex flex-col items-stretch gap-3 sm:items-end">
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            disabled={loggingOut}
+            className="rwg-btn border border-danger/50 bg-danger/15 text-danger-soft transition hover:border-danger hover:bg-danger/25 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {loggingOut ? "Logging out…" : "Logout"}
+          </button>
+          <p className="rwg-card-inset max-w-md text-sm text-muted" role="status">
+            {status}
+          </p>
+        </div>
       </header>
 
       <section className="rwg-card">
@@ -247,10 +246,10 @@ export default function SettingsProfile() {
           <button
             type="button"
             onClick={() => void handleLogout()}
-            disabled={loggingOut || !userId}
+            disabled={loggingOut}
             className="rwg-btn flex-1 border border-danger/50 bg-danger/15 text-danger-soft transition hover:border-danger hover:bg-danger/25 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {loggingOut ? "Signing out…" : "Logout"}
+            {loggingOut ? "Logging out…" : "Logout"}
           </button>
         </div>
       </section>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { initGameSync } from "@/lib/game-sync";
-import { signOut } from "@/lib/supabase/auth";
+import { signOut, storeAuthUserId } from "@/lib/supabase/auth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useGameStore } from "@/lib/game-store";
 
@@ -108,7 +108,6 @@ function isSelectFlow(pathname: string) {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const setUserId = useGameStore((state) => state.setUserId);
   const userId = useGameStore((state) => state.userId);
   const careerSelected = useGameStore((state) => state.careerSelected);
   const [email, setEmail] = useState<string | null>(null);
@@ -133,25 +132,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     void supabase.auth.getUser().then(({ data }) => {
       setEmail(data.user?.email ?? null);
-      setUserId(data.user?.id ?? null);
+      storeAuthUserId(data.user?.id ?? null);
+    }).catch((error) => {
+      console.error("Auth check failed:", error);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setEmail(session?.user?.email ?? null);
-      setUserId(session?.user?.id ?? null);
+      storeAuthUserId(session?.user?.id ?? null);
     });
 
     return () => subscription.unsubscribe();
-  }, [setUserId]);
+  }, []);
 
-  async function handleSignOut() {
+  async function handleLogout() {
     await signOut();
-    setUserId(null);
     setEmail(null);
-    router.replace("/auth");
-    router.refresh();
+    window.location.assign("/auth");
   }
 
   if (isAuthPage) {
@@ -161,6 +160,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (onSelectFlow || !careerSelected) {
     return (
       <div className="flex min-h-full flex-1 flex-col bg-background">
+        {isSupabaseConfigured && (
+          <div className="flex items-center justify-end gap-2 px-4 py-2 sm:px-8">
+            {email && (
+              <span className="max-w-[14rem] truncate text-xs text-muted">
+                {email}
+              </span>
+            )}
+            {userId || email ? (
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                className="rounded-md border border-danger/50 bg-danger/15 px-2.5 py-1 font-display text-[10px] uppercase tracking-[0.1em] text-danger-soft transition hover:border-danger hover:bg-danger/25"
+              >
+                Logout
+              </button>
+            ) : (
+              <Link href="/auth" className="rwg-btn rwg-btn-primary !px-2.5 !py-1 !text-[10px]">
+                Log In
+              </Link>
+            )}
+          </div>
+        )}
         {children}
       </div>
     );
@@ -199,16 +220,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 {email}
               </span>
             )}
-            {isSupabaseConfigured && userId && (
+            {isSupabaseConfigured && (userId || email) && (
               <button
                 type="button"
-                onClick={handleSignOut}
-                className="rwg-btn rwg-btn-ghost !px-2.5 !py-1 !text-[10px]"
+                onClick={() => void handleLogout()}
+                className="rounded-md border border-danger/50 bg-danger/15 px-2.5 py-1 font-display text-[10px] uppercase tracking-[0.1em] text-danger-soft transition hover:border-danger hover:bg-danger/25"
               >
-                Sign Out
+                Logout
               </button>
             )}
-            {isSupabaseConfigured && !userId && (
+            {isSupabaseConfigured && !userId && !email && (
               <Link href="/auth" className="rwg-btn rwg-btn-primary !px-2.5 !py-1 !text-[10px]">
                 Log In
               </Link>

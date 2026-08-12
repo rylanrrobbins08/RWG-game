@@ -30,6 +30,7 @@ export type WrestlerRow = {
   week: number;
   season: number;
   injury?: Injury | null;
+  save?: Json | null;
   created_at: string;
   updated_at: string;
 };
@@ -55,11 +56,37 @@ export type WrestlerInsert = {
   week?: number;
   season?: number;
   injury?: Injury | null;
+  save?: Json;
   created_at?: string;
   updated_at?: string;
 };
 
 export type WrestlerUpdate = Partial<WrestlerInsert>;
+
+export type LeagueRow = {
+  id: string;
+  name: string;
+  code: string;
+  created_by: string | null;
+  is_open: boolean;
+  created_at: string;
+};
+
+export type LeagueMemberRow = {
+  id: string;
+  league_id: string;
+  member_key: string;
+  user_id: string | null;
+  wrestler_name: string;
+  school: string;
+  weight_class: number;
+  wins: number;
+  losses: number;
+  attributes: Json;
+  is_bot: boolean;
+  tier: string | null;
+  updated_at: string;
+};
 
 export type Database = {
   public: {
@@ -68,6 +95,39 @@ export type Database = {
         Row: WrestlerRow;
         Insert: WrestlerInsert;
         Update: WrestlerUpdate;
+        Relationships: [];
+      };
+      leagues: {
+        Row: LeagueRow;
+        Insert: {
+          id: string;
+          name: string;
+          code: string;
+          created_by?: string | null;
+          is_open?: boolean;
+          created_at?: string;
+        };
+        Update: Partial<LeagueRow>;
+        Relationships: [];
+      };
+      league_members: {
+        Row: LeagueMemberRow;
+        Insert: {
+          id?: string;
+          league_id: string;
+          member_key: string;
+          user_id?: string | null;
+          wrestler_name: string;
+          school?: string;
+          weight_class: number;
+          wins?: number;
+          losses?: number;
+          attributes?: Json;
+          is_bot?: boolean;
+          tier?: string | null;
+          updated_at?: string;
+        };
+        Update: Partial<LeagueMemberRow>;
         Relationships: [];
       };
     };

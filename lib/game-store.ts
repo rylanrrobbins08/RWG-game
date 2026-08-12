@@ -401,6 +401,7 @@ type GameState = {
   setActiveLeague: (
     leagueId: string,
   ) => { ok: true; league: PlayerLeague } | { ok: false; error: string };
+  applyOnlineLeague: (league: PlayerLeague, roster: LeagueWrestler[]) => void;
   setActiveCareer: (careerId: string | null, selected: boolean) => void;
   clearCareerSelection: () => void;
   hydrateFromSave: (save: {
@@ -1119,6 +1120,29 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { ok: true, league };
   },
 
+  applyOnlineLeague: (league, roster) =>
+    set((state) => {
+      const already = state.playerLeagues.some((item) => item.id === league.id);
+      const playerLeagues = already
+        ? state.playerLeagues.map((item) =>
+            item.id === league.id ? league : item,
+          )
+        : [...state.playerLeagues, league];
+      const prevKey = rosterStorageKey(
+        state.activeLeagueId,
+        state.wrestler.weightClass,
+      );
+      const cache = {
+        ...state.leagueRosterCache,
+        [prevKey]: state.leagueRoster,
+      };
+      return {
+        playerLeagues,
+        activeLeagueId: league.id,
+        ...withActiveRoster(league.id, state.wrestler, roster, cache),
+      };
+    }),
+
   setActiveCareer: (careerId, selected) =>
     set({
       activeCareerId: careerId,
@@ -1261,6 +1285,7 @@ export function getGameSnapshot() {
     activeLeagueId,
     leagueRosterCache,
     careerMode,
+    activeCareerId,
   } = useGameStore.getState();
   return {
     wrestler,
@@ -1276,6 +1301,7 @@ export function getGameSnapshot() {
     activeLeagueId,
     leagueRosterCache,
     careerMode,
+    id: activeCareerId,
   };
 }
 

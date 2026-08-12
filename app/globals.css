@@ -2,16 +2,17 @@
 
 :root {
   --background: #08090c;
-  --foreground: #f5f0e6;
-  --muted: #9a9183;
+  --foreground: #e8eef8;
+  --muted: #8b97ad;
   --panel: #12151c;
   --panel-elevated: #181c26;
   --panel-border: #2c3342;
-  --accent: #e0a820;
-  --accent-hover: #f0bc35;
-  --accent-dim: #a87a12;
-  --mat: #163528;
-  --mat-bright: #8fd4b0;
+  --accent: #2f7bff;
+  --accent-hover: #5593ff;
+  --accent-dim: #1a5ad4;
+  --accent-foreground: #f4f8ff;
+  --mat: #102a4a;
+  --mat-bright: #7eb8ff;
   --danger: #c45c4a;
   --danger-soft: #e8a090;
   --card-shine: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -27,6 +28,7 @@
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-dim: var(--accent-dim);
+  --color-accent-foreground: var(--accent-foreground);
   --color-mat: var(--mat);
   --color-mat-bright: var(--mat-bright);
   --color-danger: var(--danger);
@@ -41,7 +43,7 @@ body {
   font-family: var(--font-barlow), system-ui, sans-serif;
 }
 
-/* Shared page canvas ? amber/black arena atmosphere */
+/* Shared page canvas — dark arena with blue accents */
 .rwg-page {
   position: relative;
   min-height: 100%;
@@ -184,7 +186,7 @@ body {
 
 .rwg-btn-primary {
   background: var(--accent);
-  color: var(--background);
+  color: var(--accent-foreground);
 }
 
 .rwg-btn-primary:hover {
@@ -301,7 +303,7 @@ input[type="range"]::-moz-range-thumb {
   background: radial-gradient(
     ellipse at center,
     color-mix(in srgb, var(--accent) 35%, transparent) 0%,
-    color-mix(in srgb, #1a3d2e 50%, transparent) 45%,
+    color-mix(in srgb, #123056 50%, transparent) 45%,
     transparent 70%
   );
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
@@ -420,7 +422,7 @@ input[type="range"]::-moz-range-thumb {
     ),
     linear-gradient(
       155deg,
-      color-mix(in srgb, #1a3d2e 55%, #0c0e12) 0%,
+      color-mix(in srgb, #123056 55%, #0c0e12) 0%,
       #0c0e12 42%,
       #12161f 100%
     );
@@ -435,7 +437,7 @@ input[type="range"]::-moz-range-thumb {
   inset: 0;
   background: radial-gradient(
     circle at 22% 78%,
-    color-mix(in srgb, #1a3d2e 40%, transparent),
+    color-mix(in srgb, #123056 40%, transparent),
     transparent 42%
   );
   pointer-events: none;

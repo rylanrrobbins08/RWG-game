@@ -1,118 +1,49 @@
-import type { Wrestler } from "@/lib/game-store";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import type { WrestlerRow } from "@/lib/supabase/database.types";
+import type { CareerListItem } from "@/lib/career-slots";
 import {
-  defaultNaturalWeight,
-  type WeightCutLevel,
-} from "@/lib/weight-cut";
-import type { Injury } from "@/lib/injury";
-import { fakeRanks, isLetterGrade, isStateCode } from "@/lib/wrestler-profile";
+  listWrestlersFromCloud,
+  saveWrestlerToCloud,
+} from "@/lib/wrestler-actions";
+import type { CloudWrestler } from "@/lib/supabase/wrestler-row";
 
-export type SavedGame = {
-  id: string;
-  userId: string;
-  wrestler: Wrestler;
-  week: number;
-  season: number;
-  updatedAt: string;
-};
+export type SavedGame = CloudWrestler & { rawSave?: unknown };
 
 export type SaveLoadResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
-function parseInjury(raw: WrestlerRow["injury"]): Injury | null {
-  if (!raw || typeof raw !== "object") return null;
-  const name = typeof raw.name === "string" ? raw.name : null;
-  const weeksRemaining =
-    typeof raw.weeksRemaining === "number" ? raw.weeksRemaining : null;
-  if (!name || !weeksRemaining || weeksRemaining <= 0) return null;
+export function savedGameToListItem(saved: SavedGame): CareerListItem {
   return {
-    name,
-    weeksRemaining,
-    source: raw.source === "training" ? "training" : "match",
+    id: saved.id,
+    updatedAt: saved.updatedAt,
+    name: saved.wrestler.name,
+    weightClass: saved.wrestler.weightClass,
+    hometown: saved.wrestler.hometown,
+    state: saved.wrestler.state,
+    record: saved.wrestler.record,
+    season: saved.season,
+    week: saved.week,
+    careerMode: "athlete",
   };
 }
 
-function rowToSavedGame(row: WrestlerRow): SavedGame {
-  const weightClass = row.weight_class;
-  const naturalWeight =
-    typeof row.natural_weight === "number"
-      ? row.natural_weight
-      : defaultNaturalWeight(weightClass);
-  const weightCut = (row.weight_cut as WeightCutLevel | undefined) ?? "none";
-
-  // Profile fields are local/store-first for now; cloud columns come later.
-  const grade = isLetterGrade(row.grade) ? row.grade : "B";
-  const studyProgress =
-    typeof row.study_progress === "number" && row.study_progress >= 0
-      ? Math.min(100, Math.round(row.study_progress))
-      : 0;
-  const hometown =
-    typeof row.hometown === "string" && row.hometown.trim()
-      ? row.hometown.trim()
-      : "Unknown";
-  const state = isStateCode(row.state) ? row.state : "IA";
-  const ranks =
-    typeof row.national_rank === "number" &&
-    row.national_rank > 0 &&
-    typeof row.state_rank === "number" &&
-    row.state_rank > 0
-      ? { nationalRank: row.national_rank, stateRank: row.state_rank }
-      : fakeRanks({ name: row.name, state, grade, weightClass });
-
-  return {
-    id: row.id,
-    userId: row.user_id,
-    wrestler: {
-      name: row.name,
-      weightClass,
-      naturalWeight,
-      weightCut,
-      grade,
-      studyProgress,
-      hometown,
-      state,
-      nationalRank: ranks.nationalRank,
-      stateRank: ranks.stateRank,
-      attributes: row.attributes,
-      record: row.record,
-      energy: row.energy,
-      fatigue: row.fatigue,
-      budget: row.budget,
-      injury: parseInjury(row.injury),
-    },
-    week: row.week,
-    season: row.season,
-    updatedAt: row.updated_at,
-  };
+/** Load every wrestler career for the signed-in user. */
+export async function loadWrestlers(): Promise<SaveLoadResult<SavedGame[]>> {
+  const result = await listWrestlersFromCloud();
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, data: result.data };
 }
 
-/** Load the logged-in user's wrestler save (if any). */
-export async function loadWrestler(): Promise<SaveLoadResult<SavedGame | null>> {
-  if (!isSupabaseConfigured || !supabase) {
-    return { ok: false, error: "Supabase is not configured." };
-  }
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError) return { ok: false, error: authError.message };
-  if (!user) return { ok: false, error: "Sign in required to load wrestler data." };
-
-  const { data, error } = await supabase
-    .from("wrestlers")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (error) return { ok: false, error: error.message };
-  if (!data) return { ok: true, data: null };
-
-  return { ok: true, data: rowToSavedGame(data as WrestlerRow) };
+/** Load one wrestler save (by career id, or the most recently updated). */
+export async function loadWrestler(
+  careerId?: string | null,
+): Promise<SaveLoadResult<SavedGame | null>> {
+  const result = await listWrestlersFromCloud();
+  if (!result.ok) return { ok: false, error: result.error };
+  if (result.data.length === 0) return { ok: true, data: null };
+  const match = careerId
+    ? result.data.find((row) => row.id === careerId) ?? null
+    : result.data[0];
+  return { ok: true, data: match };
 }
 
-/** Re-export the simple saver for convenience. */
-export { saveWrestler } from "@/lib/saveWrestler";
+export { saveWrestlerToCloud as saveWrestler };

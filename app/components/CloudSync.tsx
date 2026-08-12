@@ -5,6 +5,7 @@ import Link from "next/link";
 import { loadWrestler } from "@/lib/wrestlers";
 import { saveWrestler } from "@/lib/saveWrestler";
 import { getGameSnapshot, useGameStore } from "@/lib/game-store";
+import { savedGameToHydrate } from "@/lib/local-save";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 export default function CloudSync() {
@@ -35,7 +36,8 @@ export default function CloudSync() {
 
   async function handleLoad() {
     setBusy(true);
-    const result = await loadWrestler();
+    const careerId = useGameStore.getState().activeCareerId;
+    const result = await loadWrestler(careerId);
     setBusy(false);
     if (!result.ok) {
       setStatus(result.error);
@@ -45,12 +47,9 @@ export default function CloudSync() {
       setStatus("No saved wrestler found for this account.");
       return;
     }
-    hydrateFromSave({
-      wrestler: result.data.wrestler,
-      week: result.data.week,
-      season: result.data.season,
-      userId: result.data.userId,
-    });
+    hydrateFromSave(
+      savedGameToHydrate(result.data, useGameStore.getState().activeTournament),
+    );
     setStatus(`Loaded ${result.data.wrestler.name} (week ${result.data.week}).`);
   }
 
@@ -87,7 +86,7 @@ export default function CloudSync() {
             type="button"
             disabled={busy || !isSupabaseConfigured}
             onClick={handleSave}
-            className="rounded-md bg-accent px-4 py-2 font-display text-sm font-semibold uppercase tracking-[0.08em] text-background transition hover:bg-accent-hover disabled:opacity-40"
+            className="rounded-md bg-accent px-4 py-2 font-display text-sm font-semibold uppercase tracking-[0.08em] text-accent-foreground transition hover:bg-accent-hover disabled:opacity-40"
           >
             Save Wrestler
           </button>

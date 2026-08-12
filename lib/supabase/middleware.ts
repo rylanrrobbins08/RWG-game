@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "./env";
 
-const PUBLIC_PATHS = ["/auth"];
+const PUBLIC_PATHS = ["/", "/auth"];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some(
@@ -12,55 +12,61 @@ function isPublicPath(pathname: string) {
 
 /**
  * Refresh the auth session and protect main app routes.
- * Call from `proxy.ts`.
+ * Never throws — missing/invalid Supabase config must not take the app down.
  */
 export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request,
   });
 
   const env = getSupabaseEnv();
   if (!env) {
-    // Local play without Supabase — do not block routes.
     return response;
   }
 
-  const supabase = createServerClient(env.url, env.anonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
+  try {
+    let supabaseResponse = response;
+
+    const supabase = createServerClient(env.url, env.anonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
+          supabaseResponse = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(name, value, options);
+          });
+        },
       },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => {
-          request.cookies.set(name, value);
-        });
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, options);
-        });
-      },
-    },
-  });
+    });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
+    const { pathname } = request.nextUrl;
 
-  if (!user && !isPublicPath(pathname)) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/auth";
-    loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    if (!user && !isPublicPath(pathname)) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/";
+      loginUrl.search = "";
+      return NextResponse.redirect(loginUrl);
+    }
+
+    if (user && pathname === "/auth") {
+      const selectUrl = request.nextUrl.clone();
+      selectUrl.pathname = "/";
+      selectUrl.search = "";
+      return NextResponse.redirect(selectUrl);
+    }
+
+    return supabaseResponse;
+  } catch (error) {
+    console.error("Auth middleware failed:", error);
+    return response;
   }
-
-  if (user && pathname === "/auth") {
-    const selectUrl = request.nextUrl.clone();
-    selectUrl.pathname = "/";
-    selectUrl.search = "";
-    return NextResponse.redirect(selectUrl);
-  }
-
-  return response;
 }

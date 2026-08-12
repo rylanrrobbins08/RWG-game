@@ -6,12 +6,19 @@ import {
 } from "@/lib/game-store";
 import {
   createCareerSlot,
+  getStoredCareer,
+  listCareers,
   loadCareerSave,
   migrateLegacyCareerIfNeeded,
   persistCareerSlot,
+  replaceCareerId,
   setActiveCareerId,
+  upsertCareerSlot,
+  type CareerListItem,
   type CareerSaveBlob,
 } from "@/lib/career-slots";
+import { loadWrestlers, type SavedGame } from "@/lib/wrestlers";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { isLeagueRoster, isFullWeightClassRoster } from "@/lib/league";
 import { createDefaultLoadout } from "@/lib/moves";
 
@@ -81,6 +88,7 @@ function normalizeParsedSave(
       typeof parsed.activeLeagueId === "string" ? parsed.activeLeagueId : "",
     leagueRosterCache: parseRosterCache(parsed.leagueRosterCache),
     careerMode: parsed.careerMode === "coach" ? "coach" : "athlete",
+    id: typeof parsed.id === "string" ? parsed.id : null,
   };
 }
 
@@ -108,6 +116,21 @@ export function persistGameLocally() {
   } catch (error) {
     console.warn("persistGameLocally:", error);
   }
+}
+
+/** Load a cloud wrestler into the store and mark that career active. */
+export function hydrateCareerFromSavedGame(saved: SavedGame): boolean {
+  const blob = savedGameToBlob(saved);
+  upsertCareerSlot(saved.id, blob, saved.updatedAt);
+  const save = blobToSave(blob);
+  if (!save) return false;
+  useGameStore.getState().hydrateFromSave({
+    ...save,
+    userId: saved.userId,
+  });
+  useGameStore.getState().setActiveCareer(saved.id, true);
+  setActiveCareerId(saved.id);
+  return true;
 }
 
 /** Load a specific career into the store and mark it active. */
@@ -140,4 +163,81 @@ export function prepareCareerStorage() {
     const save = parseGameSaveJson(raw);
     return save ? (save as CareerSaveBlob) : null;
   });
+}
+
+function savedGameToBlob(saved: SavedGame): CareerSaveBlob {
+  const parsed = saved.rawSave
+    ? normalizeParsedSave(saved.rawSave as Partial<LocalGameSave>)
+    : null;
+  const existing = loadCareerSave(saved.id);
+  return {
+    ...(existing ?? {}),
+    ...(parsed ?? {}),
+    wrestler: parsed?.wrestler ?? saved.wrestler,
+    week: parsed?.week ?? saved.week,
+    season: parsed?.season ?? saved.season,
+    id: saved.id,
+  } as CareerSaveBlob;
+}
+
+/** Fold a cloud wrestler row into local career slots. */
+export function mergeSavedGameIntoSlots(saved: SavedGame) {
+  const existing = getStoredCareer(saved.id);
+  if (existing) {
+    if (saved.updatedAt >= existing.updatedAt) {
+      upsertCareerSlot(saved.id, savedGameToBlob(saved), saved.updatedAt);
+    }
+    return;
+  }
+
+  const nameMatch = listCareers().find(
+    (career) => career.name === saved.wrestler.name && career.id !== saved.id,
+  );
+  if (nameMatch) {
+    const local = getStoredCareer(nameMatch.id);
+    replaceCareerId(nameMatch.id, saved.id);
+    if (!local || saved.updatedAt >= local.updatedAt) {
+      upsertCareerSlot(saved.id, savedGameToBlob(saved), saved.updatedAt);
+    }
+    if (useGameStore.getState().activeCareerId === nameMatch.id) {
+      useGameStore.getState().setActiveCareer(saved.id, true);
+    }
+    return;
+  }
+
+  upsertCareerSlot(saved.id, savedGameToBlob(saved), saved.updatedAt);
+}
+
+/** Pull the signed-in user's wrestlers from Supabase into local career slots. */
+export async function syncCareersFromCloud(): Promise<CareerListItem[]> {
+  if (!isSupabaseConfigured) return listCareers();
+  const result = await loadWrestlers();
+  if (!result.ok) {
+    if (result.error !== "Sign in required to load wrestler data.") {
+      console.warn("syncCareersFromCloud:", result.error);
+    }
+    return listCareers();
+  }
+  for (const saved of result.data) {
+    mergeSavedGameIntoSlots(saved);
+  }
+  return listCareers();
+}
+
+/** Map a cloud row onto hydrateFromSave, keeping a local tournament if cloud has none. */
+export function savedGameToHydrate(
+  saved: SavedGame,
+  localTournament: LocalGameSave["activeTournament"],
+) {
+  const parsed = saved.rawSave
+    ? normalizeParsedSave(saved.rawSave as Partial<LocalGameSave>)
+    : null;
+  return {
+    ...(parsed ?? {}),
+    wrestler: parsed?.wrestler ?? saved.wrestler,
+    week: parsed?.week ?? saved.week,
+    season: parsed?.season ?? saved.season,
+    userId: saved.userId,
+    activeTournament: parsed?.activeTournament ?? localTournament,
+  };
 }

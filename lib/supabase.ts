@@ -7,29 +7,27 @@
  */
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
+import { getSupabaseEnv } from "@/lib/supabase/env";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+function tryCreateBrowserClient(): SupabaseClient<Database> | null {
+  const env = getSupabaseEnv();
+  if (!env) return null;
 
-export const isSupabaseConfigured = Boolean(url && anonKey);
-
-let browserClient: SupabaseClient | null = null;
-
-function createBrowserSupabase(): SupabaseClient {
-  return createBrowserClient(url!, anonKey!);
+  try {
+    return createBrowserClient<Database>(env.url, env.anonKey);
+  } catch (error) {
+    console.error("Supabase browser client failed:", error);
+    return null;
+  }
 }
 
-/** Shared browser client — `null` when env keys are missing. */
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? (browserClient ??= createBrowserSupabase())
-  : null;
+/** Shared browser client — `null` when env keys are missing or invalid. */
+export const supabase: SupabaseClient<Database> | null = tryCreateBrowserClient();
 
-/** Throws if Supabase env keys are missing. */
-export function getSupabase(): SupabaseClient {
-  if (!supabase) {
-    throw new Error(
-      "Supabase is not configured. Copy .env.local.example to .env.local and add your keys.",
-    );
-  }
+export const isSupabaseConfigured = supabase !== null;
+
+/** Browser client, or `null` if Supabase is not configured. */
+export function getSupabase(): SupabaseClient<Database> | null {
   return supabase;
 }

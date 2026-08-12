@@ -103,7 +103,7 @@ export default function MoveUpgrades() {
                             reached && !isNext
                               ? "border-accent/50 bg-accent/15 text-accent"
                               : isNext
-                                ? "border-accent bg-accent text-background hover:bg-accent-hover"
+                                ? "border-accent bg-accent text-accent-foreground hover:bg-accent-hover"
                                 : locked
                                   ? "cursor-not-allowed border-panel-border/50 bg-background/20 text-muted opacity-50"
                                   : "border-panel-border bg-background/40 text-muted"

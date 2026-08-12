@@ -181,7 +181,7 @@ export default function Dashboard() {
               href="/match"
               className="rwg-btn rwg-btn-primary flex flex-1 flex-col items-stretch justify-center !px-5 !py-4 text-left"
             >
-              <p className="font-display text-xs uppercase tracking-[0.14em] text-background/70">
+              <p className="font-display text-xs uppercase tracking-[0.14em] text-accent-foreground/70">
                 Scheduled Match
               </p>
               <p className="mt-1 font-display text-xl font-semibold uppercase tracking-wide">

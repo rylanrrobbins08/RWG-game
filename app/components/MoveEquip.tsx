@@ -111,7 +111,7 @@ export default function MoveEquip() {
               onClick={() => switchPosition(pos)}
               className={`rounded-md border px-3 py-3 font-display text-sm uppercase tracking-[0.1em] transition ${
                 position === pos
-                  ? "border-accent bg-accent text-background"
+                  ? "border-accent bg-accent text-accent-foreground"
                   : "border-panel-border bg-panel text-muted hover:text-foreground"
               }`}
             >
@@ -137,7 +137,7 @@ export default function MoveEquip() {
               type="button"
               onClick={saveLoadout}
               disabled={!draftDirty && draft.length === MOVES_PER_POSITION}
-              className="rounded-md bg-accent px-4 py-2.5 font-display text-sm font-semibold uppercase tracking-[0.08em] text-background transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-md bg-accent px-4 py-2.5 font-display text-sm font-semibold uppercase tracking-[0.08em] text-accent-foreground transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               Save Loadout
             </button>
@@ -226,7 +226,7 @@ export default function MoveEquip() {
         <div className="flex flex-wrap gap-3">
           <Link
             href="/calendar"
-            className="rounded-md border border-accent/50 bg-accent px-4 py-2.5 font-display text-sm font-semibold uppercase tracking-[0.08em] text-background transition hover:bg-accent-hover"
+            className="rounded-md border border-accent/50 bg-accent px-4 py-2.5 font-display text-sm font-semibold uppercase tracking-[0.08em] text-accent-foreground transition hover:bg-accent-hover"
           >
             Calendar / Match
           </Link>

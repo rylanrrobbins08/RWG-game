@@ -1,27 +1,47 @@
 import { getGameSnapshot, useGameStore } from "@/lib/game-store";
 import {
-  prepareCareerStorage,
   persistGameLocally,
+  prepareCareerStorage,
+  savedGameToHydrate,
 } from "@/lib/local-save";
 import { saveWrestler } from "@/lib/saveWrestler";
 import { loadWrestler } from "@/lib/wrestlers";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { replaceCareerId } from "@/lib/career-slots";
+import { syncLeagueRosterToCloud } from "@/lib/league-actions";
 
 let canPersist = false;
 let initialized = false;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Push current Zustand career to Supabase (no-op if logged out / unconfigured). */
-export async function persistGameToSupabase() {
-  if (!canPersist || !isSupabaseConfigured || !supabase) return;
+export async function persistGameToSupabase(force = false) {
+  if (!force && !canPersist) return;
   if (!useGameStore.getState().careerSelected) return;
 
   const result = await saveWrestler(getGameSnapshot());
   if (result.ok) {
     useGameStore.getState().setUserId(result.userId);
-    return;
+    const currentId = useGameStore.getState().activeCareerId;
+    if (result.id && currentId && result.id !== currentId) {
+      replaceCareerId(currentId, result.id);
+      useGameStore.getState().setActiveCareer(result.id, true);
+    }
+    const snapshot = getGameSnapshot();
+    void syncLeagueRosterToCloud({
+      leagueId: snapshot.activeLeagueId,
+      player: {
+        name: snapshot.wrestler.name,
+        weightClass: snapshot.wrestler.weightClass,
+        wins: snapshot.wrestler.record.wins,
+        losses: snapshot.wrestler.record.losses,
+        attributes: snapshot.wrestler.attributes,
+      },
+      roster: snapshot.leagueRoster,
+    });
+    return result;
   }
-  if (result.error !== "Sign in required to save.") {
+  if (result.error !== "Sign in required to save." && result.error !== "Supabase is not configured.") {
     console.warn("persistGameToSupabase:", result.error);
   }
 }
@@ -39,17 +59,30 @@ function schedulePersist() {
   }, 500);
 }
 
+async function pullCloudIntoStore(careerId?: string | null) {
+  canPersist = false;
+  const status = await loadGameFromSupabase(careerId);
+  canPersist = true;
+  persistGameLocally();
+  if (status === "empty") {
+    await persistGameToSupabase();
+  }
+}
+
 /**
  * Load cloud save into the store when a user is signed in.
  * Only applies when a career is already selected (does not bypass select screen).
  * Preserves in-progress tournament from local state when cloud has none.
  * @returns `"loaded" | "empty" | "skipped"`
  */
-export async function loadGameFromSupabase(): Promise<"loaded" | "empty" | "skipped"> {
+export async function loadGameFromSupabase(
+  careerId?: string | null,
+): Promise<"loaded" | "empty" | "skipped"> {
   if (!isSupabaseConfigured || !supabase) return "skipped";
   if (!useGameStore.getState().careerSelected) return "skipped";
 
-  const result = await loadWrestler();
+  const id = careerId ?? useGameStore.getState().activeCareerId;
+  const result = await loadWrestler(id);
   if (!result.ok) {
     if (result.error !== "Sign in required to load wrestler data.") {
       console.warn("loadGameFromSupabase:", result.error);
@@ -60,15 +93,9 @@ export async function loadGameFromSupabase(): Promise<"loaded" | "empty" | "skip
   if (!result.data) return "empty";
 
   const localTournament = useGameStore.getState().activeTournament;
-
-  useGameStore.getState().hydrateFromSave({
-    wrestler: result.data.wrestler,
-    week: result.data.week,
-    season: result.data.season,
-    userId: result.data.userId,
-    // Keep local tournament / completed events when cloud row omits them.
-    activeTournament: localTournament,
-  });
+  useGameStore.getState().hydrateFromSave(
+    savedGameToHydrate(result.data, localTournament),
+  );
   return "loaded";
 }
 
@@ -108,32 +135,31 @@ export function initGameSync() {
     return;
   }
 
+  canPersist = true;
+
   void (async () => {
-    canPersist = true;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user && useGameStore.getState().careerSelected) {
+      await pullCloudIntoStore();
+    }
   })();
 
   supabase.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_IN" && useGameStore.getState().careerSelected) {
-      void (async () => {
-        canPersist = false;
-        const status = await loadGameFromSupabase();
-        canPersist = true;
-        persistGameLocally();
-        if (status === "empty") {
-          await persistGameToSupabase();
-        }
-      })();
+      void pullCloudIntoStore();
     }
   });
 }
 
 /** Flush a save immediately (e.g. right after Create Wrestler). */
 export function persistGameNow() {
-  if (!useGameStore.getState().careerSelected) return;
+  if (!useGameStore.getState().careerSelected) return Promise.resolve();
   persistGameLocally();
   if (saveTimer) {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
-  void persistGameToSupabase();
+  return persistGameToSupabase(true);
 }

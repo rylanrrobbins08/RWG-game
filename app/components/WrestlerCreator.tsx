@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   ATTRIBUTES,
   ATTRIBUTE_INFO,
+  getGameSnapshot,
   type AttributeScores,
   useGameStore,
 } from "@/lib/game-store";
 import { persistGameNow } from "@/lib/game-sync";
 import { commitNewCareerFromStore } from "@/lib/local-save";
-import { canCreateCareer } from "@/lib/career-slots";
+import { canCreateCareer, replaceCareerId } from "@/lib/career-slots";
+import { saveWrestler } from "@/lib/saveWrestler";
 import { US_STATES } from "@/lib/wrestler-profile";
 import AttributeLabel from "./AttributeLabel";
 
@@ -35,8 +37,9 @@ export default function WrestlerCreator() {
   const [weightClass, setWeightClass] =
     useState<(typeof weightClasses)[number]>(144);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
@@ -59,8 +62,25 @@ export default function WrestlerCreator() {
       return;
     }
 
-    persistGameNow();
+    setSaving(true);
+
+    const result = await saveWrestler(getGameSnapshot());
+    if (result.ok) {
+      useGameStore.getState().setUserId(result.userId);
+      if (result.id !== careerId) {
+        replaceCareerId(careerId, result.id);
+        useGameStore.getState().setActiveCareer(result.id, true);
+      }
+    } else if (result.error !== "Supabase is not configured.") {
+      setSaving(false);
+      setError(result.error);
+      return;
+    }
+
+    await persistGameNow();
+    setSaving(false);
     router.push("/dashboard");
+    router.refresh();
   }
 
   const canCreate =
@@ -72,14 +92,14 @@ export default function WrestlerCreator() {
     <div className="relative min-h-full overflow-hidden">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#1a3d2e_0%,_transparent_55%),linear-gradient(160deg,_#0c0e12_0%,_#12161f_45%,_#0c0e12_100%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#123056_0%,_transparent_55%),linear-gradient(160deg,_#0c0e12_0%,_#12161f_45%,_#0c0e12_100%)]"
       />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{
           backgroundImage:
-            "repeating-linear-gradient(0deg, transparent, transparent 47px, #d4a017 47px, #d4a017 48px), repeating-linear-gradient(90deg, transparent, transparent 47px, #d4a017 47px, #d4a017 48px)",
+            "repeating-linear-gradient(0deg, transparent, transparent 47px, #2f7bff 47px, #2f7bff 48px), repeating-linear-gradient(90deg, transparent, transparent 47px, #2f7bff 47px, #2f7bff 48px)",
         }}
       />
 
@@ -186,7 +206,7 @@ export default function WrestlerCreator() {
                     aria-pressed={selected}
                     className={`rounded-md border px-2 py-2.5 font-display text-sm font-semibold tabular-nums transition ${
                       selected
-                        ? "border-accent bg-accent text-background"
+                        ? "border-accent bg-accent text-accent-foreground"
                         : "border-panel-border bg-panel text-foreground hover:border-accent/60"
                     }`}
                   >
@@ -247,10 +267,10 @@ export default function WrestlerCreator() {
 
           <button
             type="submit"
-            disabled={!canCreate}
-            className="rounded-md bg-accent px-6 py-3.5 font-display text-lg font-semibold uppercase tracking-[0.08em] text-background transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!canCreate || saving}
+            className="rounded-md bg-accent px-6 py-3.5 font-display text-lg font-semibold uppercase tracking-[0.08em] text-accent-foreground transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Create Wrestler
+            {saving ? "Saving…" : "Create Wrestler"}
           </button>
         </form>
       </main>

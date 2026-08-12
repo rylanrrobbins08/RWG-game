@@ -70,7 +70,7 @@ export default function AuthCheck() {
   }
 
   return (
-    <div className="rounded-md border border-mat/60 bg-mat/25 px-4 py-3 text-sm text-[#8fd4b0]">
+    <div className="rounded-md border border-mat/60 bg-mat/25 px-4 py-3 text-sm text-mat-bright">
       Signed in as <span className="font-medium text-foreground">{user?.email}</span>
       {userId && (
         <span className="mt-1 block text-xs text-muted">

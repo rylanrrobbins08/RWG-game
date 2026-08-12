@@ -6,6 +6,17 @@ const CAREERS_KEY = "rwg-careers-v1";
 /** Legacy single-career key — migrated into slots on first load. */
 export const LEGACY_SAVE_KEY = "rwg-game-local-v1";
 
+/** Isolate local career slots per signed-in auth user. */
+let storageUserId: string | null = null;
+
+export function setCareerStorageUserId(userId: string | null) {
+  storageUserId = userId;
+}
+
+function storageKey() {
+  return storageUserId ? `${CAREERS_KEY}:${storageUserId}` : CAREERS_KEY;
+}
+
 /** Minimal wrestler fields needed for the select list. */
 type CareerWrestlerPreview = {
   name: string;
@@ -67,7 +78,7 @@ function isCareerBlob(value: unknown): value is CareerSaveBlob {
 function readRawFile(): CareersFile {
   if (typeof window === "undefined") return emptyFile();
   try {
-    const raw = window.localStorage.getItem(CAREERS_KEY);
+    const raw = window.localStorage.getItem(storageKey());
     if (!raw) return emptyFile();
     const parsed = JSON.parse(raw) as Partial<CareersFile>;
     if (!Array.isArray(parsed.careers)) return emptyFile();
@@ -93,7 +104,7 @@ function readRawFile(): CareersFile {
 function writeFile(file: CareersFile) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(CAREERS_KEY, JSON.stringify(file));
+    window.localStorage.setItem(storageKey(), JSON.stringify(file));
   } catch (error) {
     console.warn("writeFile:", error);
   }
@@ -209,6 +220,46 @@ export function persistCareerSlot(
   };
   file.activeCareerId = id;
   writeFile(file);
+}
+
+export function getStoredCareer(careerId: string): StoredCareer | null {
+  return readRawFile().careers.find((career) => career.id === careerId) ?? null;
+}
+
+/** Point an existing local slot at a cloud row id so later saves update the same wrestler. */
+export function replaceCareerId(oldId: string, newId: string) {
+  if (oldId === newId) return;
+  const file = readRawFile();
+  const index = file.careers.findIndex((career) => career.id === oldId);
+  if (index < 0) return;
+  if (file.careers.some((career) => career.id === newId)) return;
+  file.careers[index] = { ...file.careers[index], id: newId };
+  if (file.activeCareerId === oldId) file.activeCareerId = newId;
+  writeFile(file);
+}
+
+/** Insert or overwrite a career slot by id (used when hydrating from Supabase). */
+export function upsertCareerSlot(
+  id: string,
+  save: CareerSaveBlob,
+  updatedAt?: string,
+): boolean {
+  const file = readRawFile();
+  const index = file.careers.findIndex((career) => career.id === id);
+  const entry: StoredCareer = {
+    id,
+    updatedAt: updatedAt ?? new Date().toISOString(),
+    save,
+  };
+  if (index >= 0) {
+    file.careers[index] = entry;
+    writeFile(file);
+    return true;
+  }
+  if (file.careers.length >= MAX_CAREERS) return false;
+  file.careers.push(entry);
+  writeFile(file);
+  return true;
 }
 
 export function deleteCareerSlot(careerId: string) {
