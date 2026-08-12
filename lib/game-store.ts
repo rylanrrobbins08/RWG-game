@@ -497,6 +497,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         [rosterStorageKey(leagueId, input.weightClass)]: leagueRoster,
       },
       careerMode: "athlete",
+      careerSelected: true,
     });
   },
 

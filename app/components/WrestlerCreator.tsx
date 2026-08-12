@@ -11,7 +11,7 @@ import {
 } from "@/lib/game-store";
 import { persistGameNow } from "@/lib/game-sync";
 import { commitNewCareerFromStore } from "@/lib/local-save";
-import { MAX_CAREERS, replaceCareerId } from "@/lib/career-slots";
+import { MAX_CAREERS, replaceCareerId, setActiveCareerId } from "@/lib/career-slots";
 import { listWrestlersFromCloud } from "@/lib/wrestler-actions";
 import { saveWrestler } from "@/lib/saveWrestler";
 import { US_STATES } from "@/lib/wrestler-profile";
@@ -60,27 +60,33 @@ export default function WrestlerCreator() {
       state: stateCode,
     });
 
-    const careerId = commitNewCareerFromStore();
-
+    const localId = commitNewCareerFromStore();
     setSaving(true);
 
-    const result = await saveWrestler(getGameSnapshot());
-    if (result.ok) {
-      useGameStore.getState().setUserId(result.userId);
-      if (result.id !== careerId) {
-        replaceCareerId(careerId, result.id);
-        useGameStore.getState().setActiveCareer(result.id, true);
+    try {
+      const result = await saveWrestler(getGameSnapshot());
+      let careerId = localId;
+      if (result.ok) {
+        useGameStore.getState().setUserId(result.userId);
+        if (result.id !== localId) {
+          replaceCareerId(localId, result.id);
+        }
+        careerId = result.id;
+      } else if (result.error !== "Supabase is not configured.") {
+        setError(result.error);
+        return;
       }
-    } else if (result.error !== "Supabase is not configured.") {
-      setSaving(false);
-      setError(result.error);
-      return;
-    }
 
-    await persistGameNow();
-    setSaving(false);
-    router.push("/dashboard");
-    router.refresh();
+      useGameStore.getState().setActiveCareer(careerId, true);
+      setActiveCareerId(careerId);
+      await persistGameNow();
+      router.replace("/dashboard");
+    } catch (caught) {
+      console.error("Create wrestler:", caught);
+      setError("Could not start this career. Try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const canCreate =
