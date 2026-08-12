@@ -4,7 +4,7 @@ import {
   type Wrestler,
 } from "@/lib/game-store";
 import type { Injury } from "@/lib/injury";
-import { fakeRanks, isLetterGrade, isStateCode } from "@/lib/wrestler-profile";
+import { fakeRanks, isLetterGrade, isStateCode, type LetterGrade } from "@/lib/wrestler-profile";
 import {
   defaultNaturalWeight,
   type WeightCutLevel,
@@ -95,9 +95,8 @@ export function rowToCloudWrestler(row: WrestlerTableRow): CloudWrestler {
   const state = isStateCode(extraString(attrSource, "state") ?? "")
     ? (extraString(attrSource, "state") as string)
     : "IA";
-  const grade = isLetterGrade(extraString(attrSource, "grade"))
-    ? extraString(attrSource, "grade")!
-    : "B";
+  const rawGrade = extraString(attrSource, "grade");
+  const grade: LetterGrade = isLetterGrade(rawGrade) ? rawGrade : "B";
   const studyProgress = extraNumber(attrSource, "studyProgress") ?? 0;
   const naturalWeight =
     extraNumber(attrSource, "naturalWeight") ?? defaultNaturalWeight(weightClass);
@@ -131,7 +130,7 @@ export function rowToCloudWrestler(row: WrestlerTableRow): CloudWrestler {
       weightClass,
       naturalWeight,
       weightCut,
-      grade: isLetterGrade(grade) ? grade : "B",
+      grade,
       studyProgress: Math.max(0, Math.min(100, Math.round(studyProgress))),
       hometown,
       state,
