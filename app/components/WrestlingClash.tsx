@@ -51,7 +51,7 @@ export default function WrestlingClash({
             name={opponentName}
             weightClass={opponentWeight}
             size="md"
-            className="!h-14 !w-14 !text-base sm:!h-16 sm:!w-16 sm:!text-lg !border-[#c45c4a]"
+            className="!h-14 !w-14 !text-base sm:!h-16 sm:!w-16 sm:!text-lg !border-red-500"
           />
         </div>
       </div>

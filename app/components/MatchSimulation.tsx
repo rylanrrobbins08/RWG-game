@@ -1330,7 +1330,7 @@ export default function MatchSimulation({
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-black/40">
                       <div
-                        className="h-full rounded-full bg-[#c45c4a] transition-all duration-500"
+                        className="h-full rounded-full bg-danger transition-all duration-500"
                         style={{ width: `${oppCondPct}%` }}
                       />
                     </div>
@@ -1753,11 +1753,11 @@ export default function MatchSimulation({
             <p className="mt-4 text-sm text-muted">{result.highlight}</p>
 
             {result.injury ? (
-              <p className="mt-3 rounded-md border border-[#c45c4a]/50 bg-[#c45c4a]/15 px-3 py-2 text-sm text-[#e8a090]">
+              <p className="mt-3 rounded-md border border-danger/50 bg-danger/15 px-3 py-2 text-sm text-danger-soft">
                 Injury sustained: {formatInjuryStatus(result.injury)}
               </p>
             ) : wrestler.injury ? (
-              <p className="mt-3 rounded-md border border-[#c45c4a]/40 bg-[#c45c4a]/10 px-3 py-2 text-sm text-[#e8a090]">
+              <p className="mt-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger-soft">
                 Still injured: {formatInjuryStatus(wrestler.injury)}
               </p>
             ) : null}

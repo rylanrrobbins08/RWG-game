@@ -84,14 +84,14 @@ export default function WrestlerSelect({
     <div className="relative min-h-full overflow-hidden">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#123056_0%,_transparent_55%),linear-gradient(160deg,_#0c0e12_0%,_#12161f_45%,_#0c0e12_100%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_#172554_0%,_transparent_55%),linear-gradient(160deg,_#0c0e12_0%,_#12161f_45%,_#0c0e12_100%)]"
       />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{
           backgroundImage:
-            "repeating-linear-gradient(0deg, transparent, transparent 47px, #2f7bff 47px, #2f7bff 48px), repeating-linear-gradient(90deg, transparent, transparent 47px, #2f7bff 47px, #2f7bff 48px)",
+            "repeating-linear-gradient(0deg, transparent, transparent 47px, #3b82f6 47px, #3b82f6 48px), repeating-linear-gradient(90deg, transparent, transparent 47px, #3b82f6 47px, #3b82f6 48px)",
         }}
       />
 

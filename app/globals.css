@@ -7,14 +7,14 @@
   --panel: #12151c;
   --panel-elevated: #181c26;
   --panel-border: #2c3342;
-  --accent: #2f7bff;
-  --accent-hover: #5593ff;
-  --accent-dim: #1a5ad4;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-dim: #2563eb;
   --accent-foreground: #f4f8ff;
-  --mat: #102a4a;
-  --mat-bright: #7eb8ff;
-  --danger: #c45c4a;
-  --danger-soft: #e8a090;
+  --mat: #172554;
+  --mat-bright: #60a5fa;
+  --danger: #ef4444;
+  --danger-soft: #fca5a5;
   --card-shine: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
@@ -303,7 +303,7 @@ input[type="range"]::-moz-range-thumb {
   background: radial-gradient(
     ellipse at center,
     color-mix(in srgb, var(--accent) 35%, transparent) 0%,
-    color-mix(in srgb, #123056 50%, transparent) 45%,
+    color-mix(in srgb, #172554 50%, transparent) 45%,
     transparent 70%
   );
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
@@ -422,7 +422,7 @@ input[type="range"]::-moz-range-thumb {
     ),
     linear-gradient(
       155deg,
-      color-mix(in srgb, #123056 55%, #0c0e12) 0%,
+      color-mix(in srgb, #172554 55%, #0c0e12) 0%,
       #0c0e12 42%,
       #12161f 100%
     );
@@ -437,7 +437,7 @@ input[type="range"]::-moz-range-thumb {
   inset: 0;
   background: radial-gradient(
     circle at 22% 78%,
-    color-mix(in srgb, #123056 40%, transparent),
+    color-mix(in srgb, #172554 40%, transparent),
     transparent 42%
   );
   pointer-events: none;

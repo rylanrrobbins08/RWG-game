@@ -99,7 +99,7 @@ export default function AuthForm() {
       {!configured && (
         <p
           role="status"
-          className="mt-4 rounded-md border border-danger/40 bg-danger/10 px-3 py-3 text-sm text-[#e8a090]"
+          className="mt-4 rounded-md border border-danger/40 bg-danger/10 px-3 py-3 text-sm text-danger-soft"
         >
           {CONFIG_MESSAGE}
         </p>
@@ -171,7 +171,7 @@ export default function AuthForm() {
         {error && (
           <p
             role="alert"
-            className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-[#e8a090]"
+            className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger-soft"
           >
             {error}
           </p>

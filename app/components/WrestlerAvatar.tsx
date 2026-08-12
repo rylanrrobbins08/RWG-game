@@ -18,7 +18,7 @@ function initialsFromName(name: string) {
   return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
 }
 
-/** Amber-ringed silhouette + initials placeholder for the active wrestler. */
+/** Blue-ringed silhouette + initials placeholder for the active wrestler. */
 export default function WrestlerAvatar({
   name,
   weightClass,
@@ -29,7 +29,7 @@ export default function WrestlerAvatar({
 
   return (
     <div
-      className={`relative shrink-0 overflow-hidden rounded-md border-2 border-accent bg-[linear-gradient(160deg,#1a1408_0%,#0c0e12_55%,#12161f_100%)] shadow-[inset_0_0_0_1px_rgba(224,168,32,0.25)] ${SIZE_CLASS[size]} ${className}`}
+      className={`relative shrink-0 overflow-hidden rounded-md border-2 border-accent bg-[linear-gradient(160deg,#0f172a_0%,#0c0e12_55%,#12161f_100%)] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.25)] ${SIZE_CLASS[size]} ${className}`}
       aria-label={`${name} avatar placeholder`}
       title={weightClass ? `${name} · ${weightClass} lbs` : name}
     >

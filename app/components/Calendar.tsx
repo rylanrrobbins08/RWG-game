@@ -286,7 +286,7 @@ export default function Calendar() {
               </h2>
             </div>
             <p className="text-xs text-muted">
-              Gold border = current · Amber fill = selected · Dot = major
+              Blue border = current · Blue fill = selected · Dot = major
             </p>
           </div>
 

@@ -59,7 +59,7 @@ export default function AuthCheck() {
 
   if (status === "signed-out") {
     return (
-      <div className="rounded-md border border-[#c45c4a]/40 bg-[#c45c4a]/10 px-4 py-3 text-sm text-[#e8a090]">
+      <div className="rounded-md border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger-soft">
         Not signed in.{" "}
         <Link href="/auth" className="font-medium text-accent hover:text-accent-hover">
           Log in or sign up
