@@ -1,26 +1,453 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #08090c;
+  --foreground: #f5f0e6;
+  --muted: #9a9183;
+  --panel: #12151c;
+  --panel-elevated: #181c26;
+  --panel-border: #2c3342;
+  --accent: #e0a820;
+  --accent-hover: #f0bc35;
+  --accent-dim: #a87a12;
+  --mat: #163528;
+  --mat-bright: #8fd4b0;
+  --danger: #c45c4a;
+  --danger-soft: #e8a090;
+  --card-shine: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-muted: var(--muted);
+  --color-panel: var(--panel);
+  --color-panel-elevated: var(--panel-elevated);
+  --color-panel-border: var(--panel-border);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-dim: var(--accent-dim);
+  --color-mat: var(--mat);
+  --color-mat-bright: var(--mat-bright);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: var(--font-barlow);
+  --font-display: var(--font-oswald);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-barlow), system-ui, sans-serif;
+}
+
+/* Shared page canvas ? amber/black arena atmosphere */
+.rwg-page {
+  position: relative;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+.rwg-page-bg {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 100% 100%, color-mix(in srgb, var(--mat) 55%, transparent), transparent 50%),
+    linear-gradient(165deg, #08090c 0%, #10131a 42%, #08090c 100%);
+}
+
+.rwg-page-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 47px,
+      var(--accent) 47px,
+      var(--accent) 48px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 47px,
+      var(--accent) 47px,
+      var(--accent) 48px
+    );
+}
+
+.rwg-main {
+  position: relative;
+  z-index: 1;
+  margin-inline: auto;
+  display: flex;
+  width: 100%;
+  max-width: 64rem;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.75rem 1.25rem 2rem;
+}
+
+  .rwg-main-wide {
+  max-width: 80rem;
+}
+
+@media (min-width: 640px) {
+  .rwg-main {
+    gap: 1.5rem;
+    padding: 2.25rem 2rem 2.5rem;
+  }
+}
+
+/* Cards */
+.rwg-card {
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--panel-border));
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--panel-elevated) 88%, var(--accent) 12%) 0%,
+      var(--panel) 55%,
+      color-mix(in srgb, var(--panel) 92%, black 8%) 100%
+    );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, black 35%, transparent),
+    0 12px 28px -18px color-mix(in srgb, black 80%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 14%, transparent);
+  padding: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .rwg-card {
+    padding: 1.5rem;
+  }
+}
+
+.rwg-card-accent {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--panel-border));
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--accent) 18%, var(--panel)) 0%,
+      color-mix(in srgb, var(--panel) 90%, black 10%) 100%
+    );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.rwg-card-inset {
+  border-radius: 0.375rem;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 90%, var(--accent) 10%);
+  background: color-mix(in srgb, var(--background) 72%, var(--panel) 28%);
+  padding: 0.75rem 0.875rem;
+}
+
+.rwg-stat-value {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: var(--accent);
+}
+
+.rwg-label {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rwg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  padding: 0.65rem 1rem;
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.rwg-btn-primary {
+  background: var(--accent);
+  color: var(--background);
+}
+
+.rwg-btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.rwg-btn-ghost {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--foreground);
+}
+
+.rwg-btn-ghost:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--panel-border));
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background: #2a3140;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 9999px;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #08090c;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 9999px;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #08090c;
+}
+
+/* ?? Match clash / arena ?? */
+@keyframes rwg-clash-sway {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(-1.5deg);
+  }
+}
+
+@keyframes rwg-clash-sway-opp {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(2px) rotate(1.5deg);
+  }
+}
+
+@keyframes rwg-mat-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes rwg-score-flash {
+  0% {
+    text-shadow: 0 0 0 transparent;
+  }
+  40% {
+    text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  100% {
+    text-shadow: 0 0 0 transparent;
+  }
+}
+
+.rwg-clash {
+  position: relative;
+  width: 9.5rem;
+  height: 7.75rem;
+  flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+  .rwg-clash {
+    width: 11rem;
+    height: 8.5rem;
+  }
+}
+
+.rwg-clash-mat {
+  position: absolute;
+  left: 50%;
+  bottom: 1.35rem;
+  width: 6.5rem;
+  height: 2.25rem;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--accent) 35%, transparent) 0%,
+    color-mix(in srgb, #1a3d2e 50%, transparent) 45%,
+    transparent 70%
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.rwg-clash-active .rwg-clash-mat {
+  animation: rwg-mat-pulse 2.4s ease-in-out infinite;
+}
+
+.rwg-clash-you,
+.rwg-clash-opp {
+  position: absolute;
+  z-index: 2;
+  transition:
+    top 0.45s ease,
+    left 0.45s ease,
+    right 0.45s ease,
+    bottom 0.45s ease,
+    transform 0.45s ease;
+}
+
+.rwg-clash-active .rwg-clash-sway-you {
+  animation: rwg-clash-sway 2.2s ease-in-out infinite;
+}
+
+.rwg-clash-active .rwg-clash-sway-opp {
+  animation: rwg-clash-sway-opp 2.2s ease-in-out infinite 0.15s;
+}
+
+.rwg-clash-pose-neutral .rwg-clash-you {
+  left: 0.35rem;
+  bottom: 1.6rem;
+  transform: rotate(-8deg);
+}
+
+.rwg-clash-pose-neutral .rwg-clash-opp {
+  right: 0.35rem;
+  bottom: 1.6rem;
+  transform: rotate(8deg) scaleX(-1);
+}
+
+.rwg-clash-pose-top .rwg-clash-you {
+  left: 50%;
+  top: 0;
+  z-index: 3;
+  translate: -50% 0;
+  transform: rotate(-4deg);
+}
+
+.rwg-clash-pose-top .rwg-clash-opp {
+  left: 50%;
+  bottom: 1.35rem;
+  translate: -50% 0;
+  transform: rotate(6deg) scaleX(-1);
+}
+
+.rwg-clash-pose-bottom .rwg-clash-you {
+  left: 50%;
+  bottom: 1.35rem;
+  translate: -50% 0;
+  transform: rotate(6deg);
+}
+
+.rwg-clash-pose-bottom .rwg-clash-opp {
+  left: 50%;
+  top: 0;
+  z-index: 3;
+  translate: -50% 0;
+  transform: rotate(-4deg) scaleX(-1);
+}
+
+.rwg-clash-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  z-index: 4;
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 5.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--panel-border));
+  background: color-mix(in srgb, var(--background) 88%, var(--accent) 12%);
+  padding: 0.2rem 0.55rem 0.3rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.rwg-clash-badge-label {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rwg-clash-badge-value {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.rwg-arena-board {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--panel-border));
+  background:
+    radial-gradient(
+      ellipse 70% 80% at 85% 35%,
+      color-mix(in srgb, var(--accent) 14%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, #1a3d2e 55%, #0c0e12) 0%,
+      #0c0e12 42%,
+      #12161f 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 18%, transparent),
+    0 12px 40px -20px rgba(0, 0, 0, 0.85);
+}
+
+.rwg-arena-board::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 22% 78%,
+    color-mix(in srgb, #1a3d2e 40%, transparent),
+    transparent 42%
+  );
+  pointer-events: none;
+}
+
+.rwg-score-live {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(2.75rem, 8vw, 4.25rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+  animation: rwg-score-flash 0.7s ease-out;
 }
