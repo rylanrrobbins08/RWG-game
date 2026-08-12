@@ -9,7 +9,7 @@ import {
   topLeagueStandings,
   useGameStore,
 } from "@/lib/game-store";
-import type { PlayerLeague, WrestlerScoutProfile } from "@/lib/league";
+import type { LeagueWrestler, PlayerLeague, WrestlerScoutProfile } from "@/lib/league";
 import { normalizeLeagueMember } from "@/lib/league";
 import {
   createLeagueOnline,
@@ -32,6 +32,18 @@ type ChatMessage = {
 };
 
 type LeagueModal = "join" | "create" | null;
+
+type OnlineLeagueSuccess = {
+  ok: true;
+  league: PlayerLeague;
+  roster: LeagueWrestler[];
+};
+
+function hasOnlineRoster(
+  result: { ok: true; league: PlayerLeague; roster?: unknown },
+): result is OnlineLeagueSuccess {
+  return Array.isArray(result.roster);
+}
 
 const INITIAL_CHAT: ChatMessage[] = [
   { id: "c1", user: "CoachM", text: "Big dual night — stay sharp on top.", time: "7:42 PM" },
@@ -201,7 +213,7 @@ export default function LeagueDashboard() {
       setFormError(online.error);
       return;
     }
-    if ("roster" in online) {
+    if (hasOnlineRoster(online)) {
       applyOnlineLeague(online.league, online.roster);
     }
     persistGameNow();
@@ -222,7 +234,7 @@ export default function LeagueDashboard() {
       setFormError(online.error);
       return;
     }
-    if ("roster" in online) {
+    if (hasOnlineRoster(online)) {
       applyOnlineLeague(online.league, online.roster);
     }
     persistGameNow();
@@ -240,7 +252,7 @@ export default function LeagueDashboard() {
       setFormError(online.error);
       return;
     }
-    if ("roster" in online) {
+    if (hasOnlineRoster(online)) {
       applyOnlineLeague(online.league, online.roster);
     }
     persistGameNow();
