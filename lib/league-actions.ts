@@ -54,7 +54,8 @@ function rowToWrestler(
   },
   currentUserId: string,
 ): LeagueWrestler {
-  const isPlayer = !row.is_bot && row.user_id === currentUserId;
+  const isHuman = !row.is_bot && Boolean(row.user_id);
+  const isPlayer = isHuman && row.user_id === currentUserId;
   const attrs =
     row.attributes && typeof row.attributes === "object"
       ? (row.attributes as LeagueWrestler["attributes"])
@@ -62,11 +63,12 @@ function rowToWrestler(
   return {
     id: isPlayer ? "league-player" : row.member_key,
     name: row.wrestler_name,
-    school: row.school || (isPlayer ? "Your Room" : ""),
+    school: row.school || (isPlayer ? "Your Room" : isHuman ? "Online player" : ""),
     wins: row.wins,
     losses: row.losses,
     attributes: attrs,
     weightClass: row.weight_class,
+    userId: isHuman ? row.user_id : null,
     tier: row.is_bot
       ? row.tier === "elite" || row.tier === "low"
         ? row.tier
@@ -227,47 +229,55 @@ export async function createLeagueOnline(
   }
 
   const id = makeLeagueId(trimmed);
-  const code = makeLeagueCode(trimmed, id);
+  let lastError = "Could not create league.";
 
-  const inserted = await auth.supabase
-    .from("leagues")
-    .insert({
-      id,
-      name: trimmed,
-      code,
-      created_by: auth.user.id,
-      is_open: true,
-    })
-    .select("id, name, code, created_by")
-    .single();
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const code = makeLeagueCode(trimmed, `${id}-${attempt}`);
+    const inserted = await auth.supabase
+      .from("leagues")
+      .insert({
+        id: attempt === 0 ? id : `${id}-${attempt}`,
+        name: trimmed,
+        code,
+        created_by: auth.user.id,
+        is_open: true,
+      })
+      .select("id, name, code, created_by")
+      .single();
 
-  if (inserted.error || !inserted.data) {
-    return {
-      ok: false,
-      error: inserted.error?.message ?? "Could not create league.",
-    };
+    if (!inserted.error && inserted.data) {
+      const memberError = await upsertPlayerMember(
+        auth.supabase,
+        inserted.data.id,
+        auth.user.id,
+        player,
+      );
+      if (memberError) return { ok: false, error: memberError.message };
+
+      const roster = await loadRoster(
+        auth.supabase,
+        inserted.data.id,
+        player.weightClass,
+        auth.user.id,
+      );
+
+      return {
+        ok: true,
+        league: toPlayerLeague(inserted.data, auth.user.id),
+        roster,
+      };
+    }
+
+    lastError = inserted.error?.message ?? lastError;
+    const duplicate =
+      inserted.error?.code === "23505" ||
+      (inserted.error?.message ?? "").toLowerCase().includes("duplicate");
+    if (!duplicate) {
+      return { ok: false, error: lastError };
+    }
   }
 
-  const memberError = await upsertPlayerMember(
-    auth.supabase,
-    inserted.data.id,
-    auth.user.id,
-    player,
-  );
-  if (memberError) return { ok: false, error: memberError.message };
-
-  const roster = await loadRoster(
-    auth.supabase,
-    inserted.data.id,
-    player.weightClass,
-    auth.user.id,
-  );
-
-  return {
-    ok: true,
-    league: toPlayerLeague(inserted.data, auth.user.id),
-    roster,
-  };
+  return { ok: false, error: lastError };
 }
 
 export async function joinLeagueOnline(
@@ -379,7 +389,7 @@ export async function syncLeagueRosterToCloud(input: {
   );
   if (memberError) return { ok: false, error: memberError.message };
 
-  const bots = input.roster.filter((member) => !member.isPlayer);
+  const bots = input.roster.filter((member) => !member.isPlayer && !member.userId);
   if (bots.length > 0) {
     const rows = bots.map((bot) => ({
       league_id: input.leagueId,
@@ -402,4 +412,172 @@ export async function syncLeagueRosterToCloud(input: {
   }
 
   return { ok: true };
+}
+
+export type PvpMatchResult = {
+  eventId: string;
+  week: number;
+  memberA: string;
+  memberB: string;
+  winnerKey: string;
+  scoreA: number;
+  scoreB: number;
+  youWon: boolean;
+};
+
+function orderedMemberKeys(a: string, b: string) {
+  return a < b ? ([a, b] as const) : ([b, a] as const);
+}
+
+/** Look up a completed player-vs-player dual for this event. */
+export async function getPvpMatch(input: {
+  leagueId: string;
+  eventId: string;
+  yourMemberKey: string;
+  opponentMemberKey: string;
+}): Promise<{ ok: true; match: PvpMatchResult | null } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.user || !auth.supabase) {
+    return { ok: false, error: auth.error ?? "Sign in required." };
+  }
+
+  const [memberA, memberB] = orderedMemberKeys(
+    input.yourMemberKey,
+    input.opponentMemberKey,
+  );
+
+  const { data, error } = await auth.supabase
+    .from("league_matches")
+    .select("event_id, week, member_a, member_b, winner_key, score_a, score_b")
+    .eq("league_id", input.leagueId)
+    .eq("event_id", input.eventId)
+    .eq("member_a", memberA)
+    .eq("member_b", memberB)
+    .maybeSingle();
+
+  if (error) return { ok: false, error: error.message };
+  if (!data?.winner_key) return { ok: true, match: null };
+
+  return {
+    ok: true,
+    match: {
+      eventId: data.event_id,
+      week: data.week,
+      memberA: data.member_a,
+      memberB: data.member_b,
+      winnerKey: data.winner_key,
+      scoreA: data.score_a ?? 0,
+      scoreB: data.score_b ?? 0,
+      youWon: data.winner_key === input.yourMemberKey,
+    },
+  };
+}
+
+/** Save a PvP dual once and update both players' shared W-L. */
+export async function recordPvpMatch(input: {
+  leagueId: string;
+  eventId: string;
+  week: number;
+  yourMemberKey: string;
+  opponentMemberKey: string;
+  youWon: boolean;
+  yourScore: number;
+  opponentScore: number;
+}): Promise<{ ok: true; match: PvpMatchResult } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.user || !auth.supabase) {
+    return { ok: false, error: auth.error ?? "Sign in required." };
+  }
+
+  const [memberA, memberB] = orderedMemberKeys(
+    input.yourMemberKey,
+    input.opponentMemberKey,
+  );
+  const winnerKey = input.youWon ? input.yourMemberKey : input.opponentMemberKey;
+  const scoreA =
+    memberA === input.yourMemberKey ? input.yourScore : input.opponentScore;
+  const scoreB =
+    memberB === input.yourMemberKey ? input.yourScore : input.opponentScore;
+
+  const existing = await getPvpMatch({
+    leagueId: input.leagueId,
+    eventId: input.eventId,
+    yourMemberKey: input.yourMemberKey,
+    opponentMemberKey: input.opponentMemberKey,
+  });
+  if (!existing.ok) return existing;
+  if (existing.match) return { ok: true, match: existing.match };
+
+  const inserted = await auth.supabase.from("league_matches").insert({
+    league_id: input.leagueId,
+    event_id: input.eventId,
+    week: input.week,
+    member_a: memberA,
+    member_b: memberB,
+    winner_key: winnerKey,
+    score_a: scoreA,
+    score_b: scoreB,
+    completed_at: new Date().toISOString(),
+  });
+
+  if (inserted.error) {
+    const duplicate =
+      inserted.error.code === "23505" ||
+      inserted.error.message.toLowerCase().includes("duplicate");
+    if (duplicate) {
+      const again = await getPvpMatch({
+        leagueId: input.leagueId,
+        eventId: input.eventId,
+        yourMemberKey: input.yourMemberKey,
+        opponentMemberKey: input.opponentMemberKey,
+      });
+      if (again.ok && again.match) return { ok: true, match: again.match };
+    }
+    return { ok: false, error: inserted.error.message };
+  }
+
+  await bumpMemberRecord(
+    auth.supabase,
+    input.leagueId,
+    input.opponentMemberKey,
+    !input.youWon,
+  );
+
+  return {
+    ok: true,
+    match: {
+      eventId: input.eventId,
+      week: input.week,
+      memberA,
+      memberB,
+      winnerKey,
+      scoreA,
+      scoreB,
+      youWon: input.youWon,
+    },
+  };
+}
+
+async function bumpMemberRecord(
+  supabase: SupabaseServer,
+  leagueId: string,
+  memberKey: string,
+  won: boolean,
+) {
+  const { data } = await supabase
+    .from("league_members")
+    .select("wins, losses")
+    .eq("league_id", leagueId)
+    .eq("member_key", memberKey)
+    .maybeSingle();
+  if (!data) return;
+  await supabase
+    .from("league_members")
+    .update({
+      wins: (data.wins ?? 0) + (won ? 1 : 0),
+      losses: (data.losses ?? 0) + (won ? 0 : 1),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("league_id", leagueId)
+    .eq("member_key", memberKey);
 }

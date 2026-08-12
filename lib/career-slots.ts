@@ -189,9 +189,15 @@ export function setActiveCareerId(careerId: string | null) {
 }
 
 /** Create a new career slot from the current snapshot. */
-export function createCareerSlot(save: CareerSaveBlob): string | null {
+export function createCareerSlot(save: CareerSaveBlob): string {
   const file = readRawFile();
-  if (file.careers.length >= MAX_CAREERS) return null;
+  if (file.careers.length >= MAX_CAREERS) {
+    file.careers.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+    const removed = file.careers.shift();
+    if (removed && file.activeCareerId === removed.id) {
+      file.activeCareerId = null;
+    }
+  }
   const id = crypto.randomUUID();
   file.careers.push({
     id,
@@ -267,6 +273,19 @@ export function deleteCareerSlot(careerId: string) {
   file.careers = file.careers.filter((c) => c.id !== careerId);
   if (file.activeCareerId === careerId) {
     file.activeCareerId = file.careers[0]?.id ?? null;
+  }
+  writeFile(file);
+}
+
+/** Drop local-only slots so the create limit matches the cloud roster. */
+export function retainCareerSlots(keepIds: string[]) {
+  const keep = new Set(keepIds);
+  const file = readRawFile();
+  const next = file.careers.filter((career) => keep.has(career.id));
+  if (next.length === file.careers.length) return;
+  file.careers = next;
+  if (file.activeCareerId && !keep.has(file.activeCareerId)) {
+    file.activeCareerId = next[0]?.id ?? null;
   }
   writeFile(file);
 }

@@ -30,6 +30,8 @@ export type LeagueWrestler = {
   weightClass: number;
   tier?: BotTier;
   isPlayer?: boolean;
+  /** Auth user id when this row is a real player (you or a friend). */
+  userId?: string | null;
 };
 
 export type LeagueStanding = LeagueWrestler & {
@@ -43,6 +45,7 @@ export type LeagueOpponentRef = {
   attributes?: LeagueAttributeScores;
   weightClass?: number;
   tier?: BotTier;
+  userId?: string | null;
 };
 
 const FIRST_NAMES = [
@@ -109,6 +112,14 @@ export const OPEN_LEAGUES: PlayerLeague[] = [
     createdByPlayer: false,
   },
 ];
+
+export function isHumanLeagueMember(member: LeagueWrestler) {
+  return Boolean(member.isPlayer || member.userId);
+}
+
+export function memberKeyForUserId(userId: string) {
+  return `user:${userId}`;
+}
 
 export function rosterStorageKey(leagueId: string, weightClass: number) {
   return `${leagueId}|${weightClass}`;
@@ -357,12 +368,14 @@ export function syncPlayerLeagueRecord(
 }
 
 export function normalizeLeagueMember(member: LeagueWrestler): LeagueWrestler {
-  const tier = member.tier ?? (member.isPlayer ? undefined : "high");
+  const human = isHumanLeagueMember(member);
+  const tier = member.tier ?? (human ? undefined : "high");
   const bias = tier ? TIER_POWER[tier].bias : 0.55;
   return {
     ...member,
     weightClass: member.weightClass || 145,
-    tier: member.isPlayer ? undefined : tier,
+    userId: member.userId ?? null,
+    tier: human ? undefined : tier,
     attributes: normalizeLeagueAttributes(
       member.attributes,
       member.id,
@@ -404,6 +417,7 @@ export function applyLeagueMatchToRoster(
     (m) =>
       !m.isPlayer &&
       (m.id === opponent.id ||
+        (opponent.userId && m.userId === opponent.userId) ||
         m.name.toLowerCase() === opponent.name.toLowerCase()),
   );
 
@@ -443,6 +457,7 @@ export function applyLeagueMatchToRoster(
         losses: playerWon ? 1 : 0,
         weightClass: wc,
         tier: opponent.tier ?? "high",
+        userId: opponent.userId ?? null,
         attributes: normalizeLeagueAttributes(
           opponent.attributes,
           opponent.id,
@@ -641,25 +656,31 @@ export type WrestlerScoutProfile = {
   losses: number;
   attributes: LeagueAttributeScores;
   isPlayer?: boolean;
+  isHuman?: boolean;
   tier?: BotTier;
   weightClass?: number;
 };
 
-/** Convert a league bot into a match AiOpponent shape. */
+/** Convert a league member into a match AiOpponent shape. */
 export function leagueBotToMatchOpponent(
   bot: LeagueWrestler,
   weightClass: number,
 ): import("@/lib/opponents").AiOpponent {
+  const human = isHumanLeagueMember(bot) && !bot.isPlayer;
   return {
     id: bot.id,
     name: bot.name,
-    school: bot.school,
+    school: bot.school || (human ? "Online player" : "Independent"),
     record: `${bot.wins}-${bot.losses}`,
     weightClass: bot.weightClass || weightClass,
-    style: "Varsity competitor",
-    note: "Scout attributes before you wrestle.",
+    style: human ? "Player vs player" : "Varsity competitor",
+    note: human
+      ? "Real player in this league — this bout uses their live attributes."
+      : "Scout attributes before you wrestle.",
     attributes: bot.attributes,
     tier: bot.tier ?? "high",
+    isHuman: human,
+    userId: bot.userId ?? null,
   };
 }
 
@@ -714,17 +735,44 @@ export function pickBracketBots(
   return picked.slice(0, count);
 }
 
-/** Pick one dual opponent from the weight-class field (prefer mid/high). */
+/** Pick one dual opponent from the weight-class field (humans first, then bots). */
 export function pickDualOpponent(
   roster: LeagueWrestler[],
   seed: string,
 ): LeagueWrestler | null {
-  const bots = normalizeLeagueRoster(roster).filter((m) => !m.isPlayer);
+  const normalized = normalizeLeagueRoster(roster);
+  const humanOpponent = pickHumanDualOpponent(normalized, seed);
+  if (humanOpponent) return humanOpponent;
+
+  const bots = normalized.filter((m) => !m.isPlayer && !m.userId);
   if (bots.length === 0) return null;
   const rng = mulberry32(hashString(seed));
   const high = bots.filter((b) => b.tier === "high");
   const pool = high.length > 0 ? high : bots;
   return pool[Math.floor(rng() * pool.length)] ?? bots[0] ?? null;
+}
+
+/** Pair real players in a league so both see the same opponent for a given week. */
+export function pickHumanDualOpponent(
+  roster: LeagueWrestler[],
+  seed: string,
+): LeagueWrestler | null {
+  const humans = normalizeLeagueRoster(roster).filter(isHumanLeagueMember);
+  if (humans.length < 2) return null;
+
+  const sorted = [...humans].sort((a, b) =>
+    (a.userId ?? a.id).localeCompare(b.userId ?? b.id),
+  );
+  const rotate = hashString(seed) % sorted.length;
+  const rotated = [...sorted.slice(rotate), ...sorted.slice(0, rotate)];
+
+  for (let i = 0; i + 1 < rotated.length; i += 2) {
+    const a = rotated[i];
+    const b = rotated[i + 1];
+    if (a.isPlayer) return b;
+    if (b.isPlayer) return a;
+  }
+  return null;
 }
 
 export function tierLabel(tier?: BotTier): string {

@@ -13,6 +13,8 @@ export type AiOpponent = {
   note: string;
   attributes: AttributeScores;
   tier?: BotTier;
+  isHuman?: boolean;
+  userId?: string | null;
 };
 
 const FIRST_NAMES = [

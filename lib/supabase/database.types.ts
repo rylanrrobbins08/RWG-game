@@ -88,6 +88,20 @@ export type LeagueMemberRow = {
   updated_at: string;
 };
 
+export type LeagueMatchRow = {
+  id: string;
+  league_id: string;
+  event_id: string;
+  week: number;
+  member_a: string;
+  member_b: string;
+  winner_key: string | null;
+  score_a: number | null;
+  score_b: number | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -128,6 +142,24 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<LeagueMemberRow>;
+        Relationships: [];
+      };
+      league_matches: {
+        Row: LeagueMatchRow;
+        Insert: {
+          id?: string;
+          league_id: string;
+          event_id: string;
+          week?: number;
+          member_a: string;
+          member_b: string;
+          winner_key?: string | null;
+          score_a?: number | null;
+          score_b?: number | null;
+          completed_at?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<LeagueMatchRow>;
         Relationships: [];
       };
     };

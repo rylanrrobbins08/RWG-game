@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   MAX_CAREERS,
+  listCareers,
+  retainCareerSlots,
   type CareerListItem,
 } from "@/lib/career-slots";
 import {
@@ -16,6 +19,19 @@ import { formatHometown } from "@/lib/wrestler-profile";
 import { useGameStore } from "@/lib/game-store";
 import { savedGameToListItem, type SavedGame } from "@/lib/wrestlers";
 import WrestlerAvatar from "./WrestlerAvatar";
+
+function toListItems(savedGames: SavedGame[]): CareerListItem[] {
+  const items: CareerListItem[] = [];
+  for (const saved of savedGames) {
+    try {
+      if (!saved?.id || !saved.wrestler?.name) continue;
+      items.push(savedGameToListItem(saved));
+    } catch (error) {
+      console.warn("Skipping invalid wrestler row:", error);
+    }
+  }
+  return items;
+}
 
 /** First screen after load — pick a career slot or create a new wrestler. */
 export default function WrestlerSelect({
@@ -30,54 +46,64 @@ export default function WrestlerSelect({
     (state) => state.clearCareerSelection,
   );
   const [careers, setCareers] = useState<CareerListItem[]>(() =>
-    initialWrestlers.map(savedGameToListItem),
+    toListItems(initialWrestlers),
   );
   const [cloudById, setCloudById] = useState<Record<string, SavedGame>>(() => {
     const byId: Record<string, SavedGame> = {};
     for (const saved of initialWrestlers) byId[saved.id] = saved;
     return byId;
   });
-  const [ready, setReady] = useState(initialWrestlers.length > 0 || Boolean(loadError));
   const [error, setError] = useState<string | null>(loadError);
 
   useEffect(() => {
-    prepareCareerStorage();
-    clearCareerSelection();
+    try {
+      prepareCareerStorage();
+      clearCareerSelection();
 
-    for (const saved of initialWrestlers) {
-      mergeSavedGameIntoSlots(saved);
+      const byId: Record<string, SavedGame> = {};
+      for (const saved of initialWrestlers) byId[saved.id] = saved;
+      setCloudById(byId);
+
+      if (!loadError) {
+        for (const saved of initialWrestlers) {
+          mergeSavedGameIntoSlots(saved);
+        }
+        retainCareerSlots(initialWrestlers.map((saved) => saved.id));
+        setCareers(toListItems(initialWrestlers));
+      } else {
+        setCareers(listCareers());
+      }
+
+      setError(loadError);
+    } catch (caught) {
+      console.error("Wrestler select:", caught);
+      setCareers(toListItems(initialWrestlers));
+      setError(
+        loadError ??
+          "Could not load career slots. You can still create a wrestler.",
+      );
     }
-
-    setCloudById(
-      Object.fromEntries(initialWrestlers.map((saved) => [saved.id, saved])),
-    );
-    setCareers(initialWrestlers.map(savedGameToListItem));
-    setError(loadError);
-    setReady(true);
   }, [clearCareerSelection, initialWrestlers, loadError]);
-
-  const canCreate = careers.length < MAX_CAREERS;
 
   async function handleSelect(careerId: string) {
     setError(null);
-    const cloud = cloudById[careerId];
-    const ok = cloud
-      ? hydrateCareerFromSavedGame(cloud)
-      : loadCareerIntoStore(careerId);
-    if (!ok) {
+    try {
+      const cloud = cloudById[careerId];
+      const ok = cloud
+        ? hydrateCareerFromSavedGame(cloud)
+        : loadCareerIntoStore(careerId);
+      if (!ok) {
+        setError("Could not load that career. Try another wrestler.");
+        setCareers(
+          loadError ? listCareers() : toListItems(initialWrestlers),
+        );
+        return;
+      }
+      router.push("/dashboard");
+    } catch (caught) {
+      console.error("Select wrestler:", caught);
       setError("Could not load that career. Try another wrestler.");
-      setCareers(initialWrestlers.map(savedGameToListItem));
-      return;
     }
-    router.push("/dashboard");
-  }
-
-  function handleCreate() {
-    if (!canCreate) {
-      setError(`You can have at most ${MAX_CAREERS} wrestlers.`);
-      return;
-    }
-    router.push("/create");
   }
 
   return (
@@ -107,6 +133,15 @@ export default function WrestlerSelect({
             Choose a career to continue, or create a new athlete. You can keep
             up to {MAX_CAREERS} wrestlers.
           </p>
+          <p className="mt-4 font-display text-lg font-semibold text-foreground">
+            Wrestlers: {careers.length}
+          </p>
+          <Link
+            href="/create"
+            className="rwg-btn rwg-btn-primary mt-4 inline-flex w-full sm:w-auto"
+          >
+            Create New Wrestler
+          </Link>
         </header>
 
         {error && (
@@ -115,9 +150,7 @@ export default function WrestlerSelect({
           </p>
         )}
 
-        {!ready ? (
-          <p className="text-sm text-muted">Loading wrestlers…</p>
-        ) : careers.length === 0 ? (
+        {careers.length === 0 ? (
           <section className="rwg-card text-center sm:text-left">
             <p className="rwg-label">Empty room</p>
             <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">
@@ -126,13 +159,6 @@ export default function WrestlerSelect({
             <p className="mt-2 text-sm text-muted">
               Create your first athlete to start a career.
             </p>
-            <button
-              type="button"
-              onClick={handleCreate}
-              className="rwg-btn rwg-btn-primary mt-5"
-            >
-              Create New Wrestler
-            </button>
           </section>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
@@ -172,27 +198,6 @@ export default function WrestlerSelect({
               );
             })}
           </ul>
-        )}
-
-        {ready && careers.length > 0 && (
-          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted">
-              {careers.length} of {MAX_CAREERS} careers used
-            </p>
-            {canCreate ? (
-              <button
-                type="button"
-                onClick={handleCreate}
-                className="rwg-btn rwg-btn-primary"
-              >
-                Create New Wrestler
-              </button>
-            ) : (
-              <p className="text-sm text-muted">
-                Career limit reached ({MAX_CAREERS}).
-              </p>
-            )}
-          </div>
         )}
       </main>
     </div>

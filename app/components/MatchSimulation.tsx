@@ -27,6 +27,9 @@ import {
   ranksAfterMatch,
   type RankPair,
 } from "@/lib/wrestler-profile";
+import { persistGameNow } from "@/lib/game-sync";
+import { recordPvpMatch } from "@/lib/league-actions";
+import { memberKeyForUserId } from "@/lib/league";
 import ArenaPage from "./ArenaPage";
 import WrestlerAvatar from "./WrestlerAvatar";
 import WrestlingClash from "./WrestlingClash";
@@ -628,6 +631,9 @@ export default function MatchSimulation({
   const moveLevels = useGameStore((state) => state.moveLevels);
   const leagueRoster = useGameStore((state) => state.leagueRoster);
   const applyMatchResult = useGameStore((state) => state.applyMatchResult);
+  const userId = useGameStore((state) => state.userId);
+  const activeLeagueId = useGameStore((state) => state.activeLeagueId);
+  const week = useGameStore((state) => state.week);
 
   const opponentRecord = useMemo(() => {
     const member = leagueRoster.find(
@@ -907,9 +913,26 @@ export default function MatchSimulation({
         name: opponent.name,
         school: opponent.school,
         attributes: opponent.attributes,
+        userId: opponent.userId ?? null,
       },
       ranks: yourRanksAfter,
     });
+
+    if (opponent.isHuman && userId && (opponent.userId || opponent.id)) {
+      const opponentKey = opponent.id.startsWith("user:")
+        ? opponent.id
+        : memberKeyForUserId(opponent.userId ?? opponent.id);
+      void recordPvpMatch({
+        leagueId: activeLeagueId,
+        eventId: event.id,
+        week,
+        yourMemberKey: memberKeyForUserId(userId),
+        opponentMemberKey: opponentKey,
+        youWon: matchResult.won,
+        yourScore: matchResult.yourScore,
+        opponentScore: matchResult.opponentScore,
+      }).then(() => persistGameNow());
+    }
 
     onMatchComplete?.(matchResult.won);
 
@@ -1189,12 +1212,15 @@ export default function MatchSimulation({
           <div>
             <p className="rwg-label">
               Week Event · {EVENT_STYLES[event.type].label}
+              {opponent.isHuman ? " · Player vs Player" : ""}
             </p>
             <h1 className="font-display text-3xl font-semibold uppercase tracking-wide text-foreground sm:text-4xl">
               {event.title}
             </h1>
             <p className="mt-1 text-sm text-muted">
-              {event.location} · {event.detail}
+              {opponent.isHuman
+                ? `PvP vs ${opponent.name} · ${event.location}`
+                : `${event.location} · ${event.detail}`}
             </p>
           </div>
           <p

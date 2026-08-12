@@ -147,12 +147,11 @@ export function loadCareerIntoStore(careerId: string): boolean {
 
 /**
  * After createWrestler fills the store, allocate a new slot and select it.
- * @returns career id or null if at capacity
+ * Local slot capacity never blocks this — the cloud roster is the real limit.
  */
-export function commitNewCareerFromStore(): string | null {
+export function commitNewCareerFromStore(): string {
   const snapshot = getGameSnapshot();
   const id = createCareerSlot(snapshot as CareerSaveBlob);
-  if (!id) return null;
   useGameStore.getState().setActiveCareer(id, true);
   return id;
 }

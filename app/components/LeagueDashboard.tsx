@@ -5,7 +5,6 @@ import {
   getEffectiveAttributes,
   OPEN_LEAGUES,
   STANDINGS_DISPLAY_COUNT,
-  WEIGHT_CLASS_BOT_COUNT,
   topLeagueStandings,
   useGameStore,
 } from "@/lib/game-store";
@@ -294,10 +293,22 @@ export default function LeagueDashboard() {
               {activeLeague.name}
             </h1>
             <p className="mt-1 text-sm text-muted">
-              Code {activeLeague.code} · {wrestler.weightClass} lbs ·{" "}
-              {WEIGHT_CLASS_BOT_COUNT} bots + you · showing top{" "}
-              {STANDINGS_DISPLAY_COUNT} · Your record {wrestler.record.wins}-
-              {wrestler.record.losses}
+              Code{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(activeLeague.code);
+                  setStatus(`Copied join code ${activeLeague.code}.`);
+                }}
+                className="font-mono font-semibold text-accent hover:text-accent-hover"
+              >
+                {activeLeague.code}
+              </button>{" "}
+              · {wrestler.weightClass} lbs ·{" "}
+              {leagueRoster.filter((row) => row.isPlayer || row.userId).length}{" "}
+              players · {leagueRoster.filter((row) => !row.isPlayer && !row.userId).length}{" "}
+              bots · showing top {STANDINGS_DISPLAY_COUNT} · Your record{" "}
+              {wrestler.record.wins}-{wrestler.record.losses}
             </p>
           </div>
         </div>
@@ -372,7 +383,7 @@ export default function LeagueDashboard() {
                   <tr
                     key={row.id}
                     className={`border-b border-panel-border/60 last:border-0 ${
-                      row.isPlayer ? "bg-accent/10" : ""
+                      row.isPlayer ? "bg-accent/10" : row.userId ? "bg-accent/5" : ""
                     }`}
                   >
                     <td className="py-2.5 pr-3 font-display font-semibold tabular-nums text-accent">
@@ -390,6 +401,7 @@ export default function LeagueDashboard() {
                             losses: row.losses,
                             attributes: row.attributes,
                             isPlayer: row.isPlayer,
+                            isHuman: Boolean(row.userId || row.isPlayer),
                             weightClass: row.weightClass,
                           })
                         }
@@ -399,6 +411,11 @@ export default function LeagueDashboard() {
                         {row.isPlayer && (
                           <span className="ml-2 text-[10px] uppercase tracking-[0.1em] text-accent no-underline">
                             You
+                          </span>
+                        )}
+                        {!row.isPlayer && row.userId && (
+                          <span className="ml-2 text-[10px] uppercase tracking-[0.1em] text-accent no-underline">
+                            Player
                           </span>
                         )}
                       </button>
@@ -521,8 +538,8 @@ export default function LeagueDashboard() {
                   />
                 </label>
                 <p className="text-xs text-muted">
-                  Creates a fresh standings field for your weight class and
-                  generates a join code.
+                  Saves the league online and gives you a short join code to
+                  share with friends.
                 </p>
                 <button
                   type="submit"
@@ -573,7 +590,7 @@ export default function LeagueDashboard() {
                       type="text"
                       value={joinCode}
                       onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                      placeholder="MWST"
+                      placeholder="ABCD12"
                       maxLength={8}
                       className="mt-1.5 w-full rounded-md border border-panel-border bg-background/60 px-3 py-2.5 font-mono text-sm uppercase tracking-widest text-foreground outline-none placeholder:text-muted/60 focus:border-accent"
                     />

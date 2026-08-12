@@ -11,7 +11,8 @@ import {
 } from "@/lib/game-store";
 import { persistGameNow } from "@/lib/game-sync";
 import { commitNewCareerFromStore } from "@/lib/local-save";
-import { canCreateCareer, replaceCareerId } from "@/lib/career-slots";
+import { MAX_CAREERS, replaceCareerId } from "@/lib/career-slots";
+import { listWrestlersFromCloud } from "@/lib/wrestler-actions";
 import { saveWrestler } from "@/lib/saveWrestler";
 import { US_STATES } from "@/lib/wrestler-profile";
 import AttributeLabel from "./AttributeLabel";
@@ -43,8 +44,11 @@ export default function WrestlerCreator() {
     event.preventDefault();
     setError(null);
 
-    if (!canCreateCareer()) {
-      setError("Career limit reached. Return to select and reuse a slot.");
+    const listed = await listWrestlersFromCloud();
+    if (listed.ok && listed.data.length >= MAX_CAREERS) {
+      setError(
+        `You already have ${MAX_CAREERS} wrestlers saved. Return to select and continue an existing career.`,
+      );
       return;
     }
 
@@ -57,10 +61,6 @@ export default function WrestlerCreator() {
     });
 
     const careerId = commitNewCareerFromStore();
-    if (!careerId) {
-      setError("Could not save this career. Try again.");
-      return;
-    }
 
     setSaving(true);
 

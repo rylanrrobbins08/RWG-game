@@ -49,7 +49,7 @@ export default function WrestlerScoutModal({
             </h2>
             <p className="mt-1 text-sm text-muted">
               {profile.school} · {profile.wins}-{profile.losses} · OVR {ovr}
-              {profile.isPlayer ? " · You" : ""}
+              {profile.isPlayer ? " · You" : profile.isHuman ? " · Player" : ""}
             </p>
           </div>
           <button
