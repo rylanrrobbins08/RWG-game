@@ -125,17 +125,14 @@ async function requireUser() {
 
 type SupabaseServer = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
-function stampMemberInsert<T extends Record<string, unknown>>(row: T) {
+function stampMemberInsert<T extends object>(
+  row: T,
+): T & { created_at: string; updated_at: string } {
   const now = new Date().toISOString();
-  const rest: Record<string, unknown> = { ...row };
-  delete rest.created_at;
   return {
-    ...rest,
+    ...row,
     created_at: now,
-    updated_at:
-      typeof rest.updated_at === "string" && rest.updated_at.length > 0
-        ? rest.updated_at
-        : now,
+    updated_at: now,
   };
 }
 
