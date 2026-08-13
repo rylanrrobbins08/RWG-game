@@ -141,7 +141,12 @@ async function ensureWeightClassBots(
 
   if ((existing?.length ?? 0) >= 30) return;
 
-  const bots = createWeightClassBots(weightClass, leagueId);
+  const existingKeys = new Set((existing ?? []).map((row) => row.member_key));
+  const bots = createWeightClassBots(weightClass, leagueId).filter(
+    (bot) => !existingKeys.has(bot.id),
+  );
+  if (bots.length === 0) return;
+
   const rows = bots.map((bot) => ({
     league_id: leagueId,
     member_key: bot.id,
@@ -157,10 +162,7 @@ async function ensureWeightClassBots(
     updated_at: new Date().toISOString(),
   }));
 
-  await supabase.from("league_members").upsert(rows, {
-    onConflict: "league_id,member_key",
-    ignoreDuplicates: true,
-  });
+  await supabase.from("league_members").insert(rows);
 }
 
 async function upsertPlayerMember(
@@ -186,7 +188,7 @@ async function upsertPlayerMember(
       is_bot: false,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "league_id,member_key" },
+    { onConflict: "league_id,user_id" },
   );
   return error;
 }
@@ -461,24 +463,34 @@ export async function syncLeagueRosterToCloud(input: {
 
   const bots = input.roster.filter((member) => !member.isPlayer && !member.userId);
   if (bots.length > 0) {
-    const rows = bots.map((bot) => ({
-      league_id: input.leagueId,
-      member_key: bot.id,
-      user_id: null as string | null,
-      wrestler_name: bot.name,
-      school: bot.school,
-      weight_class: input.player.weightClass,
-      wins: bot.wins,
-      losses: bot.losses,
-      attributes: bot.attributes as unknown as Json,
-      is_bot: true,
-      tier: bot.tier ?? "high",
-      updated_at: new Date().toISOString(),
-    }));
-    const { error } = await auth.supabase.from("league_members").upsert(rows, {
-      onConflict: "league_id,member_key",
-    });
-    if (error) return { ok: false, error: error.message };
+    const { data: existing } = await auth.supabase
+      .from("league_members")
+      .select("member_key")
+      .eq("league_id", input.leagueId)
+      .eq("is_bot", true);
+    const existingKeys = new Set((existing ?? []).map((row) => row.member_key));
+    const rows = bots
+      .filter((bot) => !existingKeys.has(bot.id))
+      .map((bot) => ({
+        league_id: input.leagueId,
+        member_key: bot.id,
+        user_id: null as string | null,
+        wrestler_name: bot.name,
+        school: bot.school,
+        weight_class: input.player.weightClass,
+        wins: bot.wins,
+        losses: bot.losses,
+        attributes: bot.attributes as unknown as Json,
+        is_bot: true,
+        tier: bot.tier ?? "high",
+        updated_at: new Date().toISOString(),
+      }));
+    if (rows.length > 0) {
+      const { error } = await auth.supabase.from("league_members").insert(rows);
+      if (error && error.code !== "23505") {
+        return { ok: false, error: error.message };
+      }
+    }
   }
 
   return { ok: true };
