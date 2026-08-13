@@ -14,8 +14,9 @@ import {
   eventsForWeek,
   getCurrentWrestleEvent,
 } from "@/lib/season-schedule";
-import { getPvpMatch, type PvpMatchResult } from "@/lib/league-actions";
 import { persistGameNow } from "@/lib/game-sync";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { getPvpMatch, loadLeagueRosterOnline, type PvpMatchResult } from "@/lib/league-actions";
 import ArenaPage from "./ArenaPage";
 import MatchSimulation from "./MatchSimulation";
 import TournamentEvent from "./TournamentEvent";
@@ -30,6 +31,7 @@ export default function ScheduledMatch() {
   const userId = useGameStore((state) => state.userId);
   const activeLeagueId = useGameStore((state) => state.activeLeagueId);
   const applyMatchResult = useGameStore((state) => state.applyMatchResult);
+  const applyOnlineLeague = useGameStore((state) => state.applyOnlineLeague);
   const ensureWeightClassRoster = useGameStore(
     (state) => state.ensureWeightClassRoster,
   );
@@ -50,11 +52,26 @@ export default function ScheduledMatch() {
     ensureWeightClassRoster();
   }, [ensureWeightClassRoster, wrestler.weightClass]);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let cancelled = false;
+    void loadLeagueRosterOnline(activeLeagueId, wrestler.weightClass).then(
+      (result) => {
+        if (cancelled || !result.ok) return;
+        applyOnlineLeague(result.league, result.roster);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLeagueId, applyOnlineLeague, wrestler.weightClass]);
+
   const dualOpponent = useMemo(() => {
     if (!event || isBracketEvent(event)) return null;
     const picked = pickDualOpponent(
       leagueRoster,
       `${event.id}|dual|${wrestler.weightClass}`,
+      wrestler.weightClass,
     );
     if (picked) {
       const bot = leagueBotToMatchOpponent(picked, wrestler.weightClass);

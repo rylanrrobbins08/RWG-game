@@ -125,6 +125,9 @@ export function rosterStorageKey(leagueId: string, weightClass: number) {
   return `${leagueId}|${weightClass}`;
 }
 
+export const LEAGUE_CODE_LENGTH = 6;
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
 export function normalizeLeagueCode(raw: string) {
   return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
 }
@@ -167,11 +170,22 @@ export function makeLeagueId(name: string) {
   return `${slug || "league"}-${suffix}`;
 }
 
-export function makeLeagueCode(name: string, id: string) {
-  const letters = name.replace(/[^a-zA-Z]/g, "").toUpperCase();
-  const prefix = (letters.slice(0, 4) || "LGUE").padEnd(4, "X");
-  const num = (hashString(id) % 100).toString().padStart(2, "0");
-  return normalizeLeagueCode(`${prefix}${num}`);
+/** Short 6-character code friends can type to join the same league. */
+export function makeLeagueCode(_name = "", salt = "") {
+  const bytes = new Uint8Array(LEAGUE_CODE_LENGTH);
+  try {
+    crypto.getRandomValues(bytes);
+  } catch {
+    const rng = mulberry32(hashString(`${salt}|${Date.now()}|${Math.random()}`));
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(rng() * 256);
+    }
+  }
+  let code = "";
+  for (const byte of bytes) {
+    code += CODE_ALPHABET[byte % CODE_ALPHABET.length];
+  }
+  return code;
 }
 
 /** Look up a preset or already-joined league by join code. */
@@ -317,8 +331,32 @@ export function createLeagueRoster(
 
 /** True when roster looks like a full weight-class field. */
 export function isFullWeightClassRoster(roster: LeagueWrestler[]): boolean {
-  const bots = roster.filter((m) => !m.isPlayer);
+  const bots = roster.filter((m) => !isHumanLeagueMember(m));
   return bots.length >= WEIGHT_CLASS_BOT_COUNT;
+}
+
+/** Keep real players when a local bot field is rebuilt. */
+export function mergeHumanLeagueMembers(
+  roster: LeagueWrestler[],
+  humans: LeagueWrestler[],
+): LeagueWrestler[] {
+  const next = [...normalizeLeagueRoster(roster)];
+  for (const human of humans) {
+    if (!isHumanLeagueMember(human) || human.isPlayer) continue;
+    const index = next.findIndex(
+      (member) =>
+        !member.isPlayer &&
+        ((human.userId && member.userId === human.userId) ||
+          member.id === human.id),
+    );
+    const row = normalizeLeagueMember({ ...human, isPlayer: false });
+    if (index >= 0) {
+      next[index] = { ...next[index], ...row, isPlayer: false };
+    } else {
+      next.push(row);
+    }
+  }
+  return next;
 }
 
 /** Keep the player row aligned with the career record (+ optional attrs). */
@@ -739,9 +777,10 @@ export function pickBracketBots(
 export function pickDualOpponent(
   roster: LeagueWrestler[],
   seed: string,
+  weightClass?: number,
 ): LeagueWrestler | null {
   const normalized = normalizeLeagueRoster(roster);
-  const humanOpponent = pickHumanDualOpponent(normalized, seed);
+  const humanOpponent = pickHumanDualOpponent(normalized, seed, weightClass);
   if (humanOpponent) return humanOpponent;
 
   const bots = normalized.filter((m) => !m.isPlayer && !m.userId);
@@ -756,8 +795,19 @@ export function pickDualOpponent(
 export function pickHumanDualOpponent(
   roster: LeagueWrestler[],
   seed: string,
+  weightClass?: number,
 ): LeagueWrestler | null {
-  const humans = normalizeLeagueRoster(roster).filter(isHumanLeagueMember);
+  const humans = normalizeLeagueRoster(roster).filter((member) => {
+    if (!isHumanLeagueMember(member)) return false;
+    if (
+      weightClass != null &&
+      member.weightClass &&
+      member.weightClass !== weightClass
+    ) {
+      return false;
+    }
+    return true;
+  });
   if (humans.length < 2) return null;
 
   const sorted = [...humans].sort((a, b) =>

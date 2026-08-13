@@ -5,7 +5,6 @@ import { getSupabaseEnv } from "@/lib/supabase/env";
 import {
   createWeightClassBots,
   makeLeagueCode,
-  makeLeagueId,
   normalizeLeagueCode,
   type LeagueWrestler,
   type PlayerLeague,
@@ -23,8 +22,20 @@ export type LeaguePlayerSnapshot = {
   attributes: AttributeScores;
 };
 
-function memberKeyForUser(userId: string) {
-  return `user:${userId}`;
+const JOIN_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string) {
+  return UUID_PATTERN.test(value);
+}
+
+function newJoinCode() {
+  for (let i = 0; i < 8; i += 1) {
+    const code = normalizeLeagueCode(makeLeagueCode());
+    if (JOIN_CODE_PATTERN.test(code) && !isUuid(code)) return code;
+  }
+  return "ABC234";
 }
 
 function toPlayerLeague(
@@ -166,6 +177,9 @@ async function upsertPlayerMember(
   return error;
 }
 
+const MEMBER_COLUMNS =
+  "member_key, user_id, wrestler_name, school, weight_class, wins, losses, attributes, is_bot, tier";
+
 async function loadRoster(
   supabase: SupabaseServer,
   leagueId: string,
@@ -174,16 +188,21 @@ async function loadRoster(
 ): Promise<LeagueWrestler[]> {
   await ensureWeightClassBots(supabase, leagueId, weightClass);
 
-  const { data, error } = await supabase
+  const humans = await supabase
     .from("league_members")
-    .select(
-      "member_key, user_id, wrestler_name, school, weight_class, wins, losses, attributes, is_bot, tier",
-    )
+    .select(MEMBER_COLUMNS)
     .eq("league_id", leagueId)
-    .eq("weight_class", weightClass);
+    .eq("is_bot", false);
 
-  if (error || !data) return [];
-  return data.map((row) => rowToWrestler(row, userId));
+  const bots = await supabase
+    .from("league_members")
+    .select(MEMBER_COLUMNS)
+    .eq("league_id", leagueId)
+    .eq("weight_class", weightClass)
+    .eq("is_bot", true);
+
+  const rows = [...(humans.data ?? []), ...(bots.data ?? [])];
+  return rows.map((row) => rowToWrestler(row, userId));
 }
 
 /** Browse every open league (presets + player-created). */
@@ -227,16 +246,19 @@ export async function createLeagueOnline(
   if (!auth.user || !auth.supabase) {
     return { ok: false, error: auth.error ?? "Sign in required." };
   }
+  if (!isUuid(auth.user.id)) {
+    return { ok: false, error: "Sign in required." };
+  }
 
-  const id = makeLeagueId(trimmed);
   let lastError = "Could not create league.";
 
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const code = makeLeagueCode(trimmed, `${id}-${attempt}`);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const id = crypto.randomUUID();
+    const code = newJoinCode();
     const inserted = await auth.supabase
       .from("leagues")
       .insert({
-        id: attempt === 0 ? id : `${id}-${attempt}`,
+        id,
         name: trimmed,
         code,
         created_by: auth.user.id,
@@ -536,6 +558,12 @@ export async function recordPvpMatch(input: {
     return { ok: false, error: inserted.error.message };
   }
 
+  await bumpMemberRecord(
+    auth.supabase,
+    input.leagueId,
+    input.yourMemberKey,
+    input.youWon,
+  );
   await bumpMemberRecord(
     auth.supabase,
     input.leagueId,

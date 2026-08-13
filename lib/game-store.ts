@@ -41,8 +41,10 @@ import {
   ensureLeagueMembers,
   findLeagueByCode,
   isFullWeightClassRoster,
+  isHumanLeagueMember,
   makeLeagueCode,
   makeLeagueId,
+  mergeHumanLeagueMembers,
   normalizeLeagueRoster,
   OPEN_LEAGUES,
   rosterStorageKey,
@@ -965,24 +967,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     set((state) => {
       const { wrestler, leagueRoster, activeLeagueId, leagueRosterCache } =
         state;
-      const sameWeight = leagueRoster.every(
-        (m) => !m.weightClass || m.weightClass === wrestler.weightClass,
+      const humans = leagueRoster.filter(isHumanLeagueMember);
+      const bots = leagueRoster.filter((member) => !isHumanLeagueMember(member));
+      const sameWeightBots = bots.every(
+        (member) => !member.weightClass || member.weightClass === wrestler.weightClass,
       );
-      if (isFullWeightClassRoster(leagueRoster) && sameWeight) {
-        const synced = syncRosterPlayer(leagueRoster, wrestler);
-        return withActiveRoster(
-          activeLeagueId,
-          wrestler,
-          synced,
-          leagueRosterCache,
+      let next: LeagueWrestler[];
+      if (isFullWeightClassRoster(leagueRoster) && sameWeightBots) {
+        next = syncRosterPlayer(leagueRoster, wrestler);
+      } else {
+        next = mergeHumanLeagueMembers(
+          buildRosterForLeague(wrestler, activeLeagueId, leagueRosterCache),
+          humans,
         );
       }
-      const next = buildRosterForLeague(
-        wrestler,
+      return withActiveRoster(
         activeLeagueId,
+        wrestler,
+        next,
         leagueRosterCache,
       );
-      return withActiveRoster(activeLeagueId, wrestler, next, leagueRosterCache);
     }),
 
   createPlayerLeague: (name) => {
