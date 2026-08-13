@@ -159,13 +159,17 @@ async function ensureWeightClassBots(
     attributes: bot.attributes as unknown as Json,
     is_bot: true,
     tier: bot.tier ?? "high",
+    created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }));
 
-  await supabase.from("league_members").insert(rows);
+  const { error } = await supabase.from("league_members").insert(rows);
+  if (error && error.code !== "23505") {
+    console.warn("ensureWeightClassBots:", error.message);
+  }
 }
 
-async function upsertPlayerMember(
+async function savePlayerMember(
   supabase: SupabaseServer,
   leagueId: string,
   userId: string,
@@ -174,22 +178,48 @@ async function upsertPlayerMember(
   if (!isUuid(leagueId) || !isUuid(userId)) {
     return { message: "League id must be a UUID." };
   }
-  const { error } = await supabase.from("league_members").upsert(
-    {
-      league_id: leagueId,
-      member_key: memberKeyForUserId(userId),
-      user_id: userId,
-      wrestler_name: player.name,
-      school: "Your Room",
-      weight_class: player.weightClass,
-      wins: player.wins,
-      losses: player.losses,
-      attributes: player.attributes as unknown as Json,
-      is_bot: false,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "league_id,user_id" },
-  );
+
+  const payload = {
+    league_id: leagueId,
+    member_key: memberKeyForUserId(userId),
+    user_id: userId,
+    wrestler_name: player.name,
+    school: "Your Room",
+    weight_class: player.weightClass,
+    wins: player.wins,
+    losses: player.losses,
+    attributes: player.attributes as unknown as Json,
+    is_bot: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const existing = await supabase
+    .from("league_members")
+    .select("id")
+    .eq("league_id", leagueId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existing.data?.id) {
+    const { error } = await supabase
+      .from("league_members")
+      .update({
+        wrestler_name: payload.wrestler_name,
+        school: payload.school,
+        weight_class: payload.weight_class,
+        wins: payload.wins,
+        losses: payload.losses,
+        attributes: payload.attributes,
+        member_key: payload.member_key,
+        updated_at: payload.updated_at,
+      })
+      .eq("id", existing.data.id);
+    return error;
+  }
+
+  const { error } = await supabase.from("league_members").insert(payload);
+  if (error?.code === "23505") return null;
   return error;
 }
 
@@ -289,7 +319,7 @@ export async function createLeagueOnline(
           error: "League id must be a UUID. Check the leagues.id column type.",
         };
       }
-      const memberError = await upsertPlayerMember(
+      const memberError = await savePlayerMember(
         auth.supabase,
         inserted.data.id,
         auth.user.id,
@@ -378,7 +408,7 @@ export async function joinLeagueOnline(
     };
   }
 
-  const memberError = await upsertPlayerMember(
+  const memberError = await savePlayerMember(
     auth.supabase,
     league.id,
     auth.user.id,
@@ -453,7 +483,7 @@ export async function syncLeagueRosterToCloud(input: {
     return { ok: false, error: auth.error ?? "Sign in required." };
   }
 
-  const memberError = await upsertPlayerMember(
+  const memberError = await savePlayerMember(
     auth.supabase,
     input.leagueId,
     auth.user.id,
@@ -483,6 +513,7 @@ export async function syncLeagueRosterToCloud(input: {
         attributes: bot.attributes as unknown as Json,
         is_bot: true,
         tier: bot.tier ?? "high",
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }));
     if (rows.length > 0) {

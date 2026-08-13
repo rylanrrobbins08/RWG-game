@@ -85,6 +85,7 @@ export type LeagueMemberRow = {
   attributes: Json;
   is_bot: boolean;
   tier: string | null;
+  created_at: string;
   updated_at: string;
 };
 
@@ -139,6 +140,7 @@ export type Database = {
           attributes?: Json;
           is_bot?: boolean;
           tier?: string | null;
+          created_at?: string;
           updated_at?: string;
         };
         Update: Partial<LeagueMemberRow>;
