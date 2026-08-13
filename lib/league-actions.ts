@@ -5,6 +5,7 @@ import { getSupabaseEnv } from "@/lib/supabase/env";
 import {
   createWeightClassBots,
   makeLeagueCode,
+  memberKeyForUserId,
   normalizeLeagueCode,
   type LeagueWrestler,
   type PlayerLeague,
@@ -161,7 +162,7 @@ async function upsertPlayerMember(
   const { error } = await supabase.from("league_members").upsert(
     {
       league_id: leagueId,
-      member_key: memberKeyForUser(userId),
+      member_key: memberKeyForUserId(userId),
       user_id: userId,
       wrestler_name: player.name,
       school: "Your Room",
