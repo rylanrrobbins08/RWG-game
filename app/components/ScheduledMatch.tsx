@@ -7,6 +7,7 @@ import {
   leagueBotToMatchOpponent,
   memberKeyForUserId,
   pickDualOpponent,
+  isUuid,
 } from "@/lib/league";
 import { generateDualOpponent, isBracketEvent } from "@/lib/opponents";
 import {
@@ -53,7 +54,7 @@ export default function ScheduledMatch() {
   }, [ensureWeightClassRoster, wrestler.weightClass]);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured || !isUuid(activeLeagueId)) return;
     let cancelled = false;
     void loadLeagueRosterOnline(activeLeagueId, wrestler.weightClass).then(
       (result) => {

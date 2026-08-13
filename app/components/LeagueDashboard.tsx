@@ -9,7 +9,7 @@ import {
   useGameStore,
 } from "@/lib/game-store";
 import type { LeagueWrestler, PlayerLeague, WrestlerScoutProfile } from "@/lib/league";
-import { isHumanLeagueMember, normalizeLeagueMember } from "@/lib/league";
+import { isHumanLeagueMember, isUuid, normalizeLeagueMember } from "@/lib/league";
 import {
   createLeagueOnline,
   joinLeagueOnline,
@@ -103,7 +103,7 @@ export default function LeagueDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured || !isUuid(activeLeagueId)) return;
     let cancelled = false;
 
     async function refreshRoster() {

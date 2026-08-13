@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 import {
   createWeightClassBots,
+  isUuid,
   makeLeagueCode,
   memberKeyForUserId,
   normalizeLeagueCode,
@@ -24,12 +25,6 @@ export type LeaguePlayerSnapshot = {
 };
 
 const JOIN_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isUuid(value: string) {
-  return UUID_PATTERN.test(value);
-}
 
 function newJoinCode() {
   for (let i = 0; i < 8; i += 1) {
@@ -39,14 +34,34 @@ function newJoinCode() {
   return "ABC234";
 }
 
+function joinCodeFromRow(row: {
+  code?: string | null;
+  join_code?: string | null;
+}) {
+  const candidates = [row.join_code, row.code];
+  for (const raw of candidates) {
+    const code = normalizeLeagueCode(raw ?? "");
+    if (code && !isUuid(code) && code.length >= 4 && code.length <= 8) {
+      return code;
+    }
+  }
+  return normalizeLeagueCode(row.code ?? row.join_code ?? "");
+}
+
 function toPlayerLeague(
-  row: { id: string; name: string; code: string; created_by: string | null },
+  row: {
+    id: string;
+    name: string;
+    code?: string | null;
+    join_code?: string | null;
+    created_by: string | null;
+  },
   userId: string,
 ): CloudLeague {
   return {
     id: row.id,
     name: row.name,
-    code: row.code,
+    code: joinCodeFromRow(row),
     createdByPlayer: row.created_by === userId,
   };
 }
@@ -122,6 +137,8 @@ async function ensureWeightClassBots(
   leagueId: string,
   weightClass: number,
 ) {
+  if (!isUuid(leagueId)) return;
+
   const { data: existing } = await supabase
     .from("league_members")
     .select("member_key")
@@ -135,7 +152,7 @@ async function ensureWeightClassBots(
   const rows = bots.map((bot) => ({
     league_id: leagueId,
     member_key: bot.id,
-    user_id: null,
+    user_id: null as string | null,
     wrestler_name: bot.name,
     school: bot.school,
     weight_class: weightClass,
@@ -159,6 +176,9 @@ async function upsertPlayerMember(
   userId: string,
   player: LeaguePlayerSnapshot,
 ) {
+  if (!isUuid(leagueId) || !isUuid(userId)) {
+    return { message: "League id must be a UUID." };
+  }
   const { error } = await supabase.from("league_members").upsert(
     {
       league_id: leagueId,
@@ -254,21 +274,53 @@ export async function createLeagueOnline(
   let lastError = "Could not create league.";
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const id = crypto.randomUUID();
-    const code = newJoinCode();
-    const inserted = await auth.supabase
+    const joinCode = newJoinCode();
+    const leagueId = crypto.randomUUID();
+    const row = {
+      id: leagueId,
+      name: trimmed,
+      code: joinCode,
+      join_code: joinCode,
+      created_by: auth.user.id,
+      is_open: true,
+    };
+
+    let inserted = await auth.supabase
       .from("leagues")
-      .insert({
-        id,
-        name: trimmed,
-        code,
-        created_by: auth.user.id,
-        is_open: true,
-      })
-      .select("id, name, code, created_by")
+      .insert(row)
+      .select("id, name, code, join_code, created_by")
       .single();
 
+    if (inserted.error && /join_code/i.test(inserted.error.message)) {
+      const { join_code: _ignored, ...withoutJoinCode } = row;
+      inserted = await auth.supabase
+        .from("leagues")
+        .insert(withoutJoinCode)
+        .select("id, name, code, created_by")
+        .single();
+    }
+
+    if (inserted.error && /uuid/i.test(inserted.error.message)) {
+      inserted = await auth.supabase
+        .from("leagues")
+        .insert({
+          id: leagueId,
+          name: trimmed,
+          join_code: joinCode,
+          created_by: auth.user.id,
+          is_open: true,
+        })
+        .select("id, name, join_code, created_by")
+        .single();
+    }
+
     if (!inserted.error && inserted.data) {
+      if (!isUuid(inserted.data.id)) {
+        return {
+          ok: false,
+          error: "League id must be a UUID. Check the leagues.id column type.",
+        };
+      }
       const memberError = await upsertPlayerMember(
         auth.supabase,
         inserted.data.id,
@@ -315,17 +367,50 @@ export async function joinLeagueOnline(
     return { ok: false, error: auth.error ?? "Sign in required." };
   }
 
-  let query = auth.supabase.from("leagues").select("id, name, code, created_by");
+  let league: {
+    id: string;
+    name: string;
+    code?: string | null;
+    join_code?: string | null;
+    created_by: string | null;
+  } | null = null;
+
   if (input.leagueId) {
-    query = query.eq("id", input.leagueId);
+    if (!isUuid(input.leagueId)) {
+      return { ok: false, error: "League id must be a UUID." };
+    }
+    const found = await auth.supabase
+      .from("leagues")
+      .select("id, name, code, created_by")
+      .eq("id", input.leagueId)
+      .maybeSingle();
+    if (found.error) return { ok: false, error: found.error.message };
+    league = found.data;
   } else if (input.code) {
-    query = query.eq("code", normalizeLeagueCode(input.code));
+    const normalized = normalizeLeagueCode(input.code);
+    if (!normalized || isUuid(normalized)) {
+      return { ok: false, error: "Enter a short join code like ABC234." };
+    }
+    const byJoinCode = await auth.supabase
+      .from("leagues")
+      .select("id, name, code, join_code, created_by")
+      .eq("join_code", normalized)
+      .maybeSingle();
+    if (!byJoinCode.error && byJoinCode.data) {
+      league = byJoinCode.data;
+    } else {
+      const byCode = await auth.supabase
+        .from("leagues")
+        .select("id, name, code, created_by")
+        .eq("code", normalized)
+        .maybeSingle();
+      if (byCode.error) return { ok: false, error: byCode.error.message };
+      league = byCode.data;
+    }
   } else {
     return { ok: false, error: "Pick an open circuit or enter a valid code." };
   }
 
-  const { data: league, error } = await query.maybeSingle();
-  if (error) return { ok: false, error: error.message };
   if (!league) {
     return {
       ok: false,
@@ -365,6 +450,9 @@ export async function loadLeagueRosterOnline(
   | { ok: true; league: CloudLeague; roster: LeagueWrestler[] }
   | { ok: false; error: string }
 > {
+  if (!isUuid(leagueId)) {
+    return { ok: false, error: "League id must be a UUID." };
+  }
   const auth = await requireUser();
   if (!auth.user || !auth.supabase) {
     return { ok: false, error: auth.error ?? "Sign in required." };
@@ -399,6 +487,9 @@ export async function syncLeagueRosterToCloud(input: {
   player: LeaguePlayerSnapshot;
   roster: LeagueWrestler[];
 }): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isUuid(input.leagueId)) {
+    return { ok: true };
+  }
   const auth = await requireUser();
   if (!auth.user || !auth.supabase) {
     return { ok: false, error: auth.error ?? "Sign in required." };
@@ -459,6 +550,9 @@ export async function getPvpMatch(input: {
   yourMemberKey: string;
   opponentMemberKey: string;
 }): Promise<{ ok: true; match: PvpMatchResult | null } | { ok: false; error: string }> {
+  if (!isUuid(input.leagueId)) {
+    return { ok: true, match: null };
+  }
   const auth = await requireUser();
   if (!auth.user || !auth.supabase) {
     return { ok: false, error: auth.error ?? "Sign in required." };
@@ -507,6 +601,9 @@ export async function recordPvpMatch(input: {
   yourScore: number;
   opponentScore: number;
 }): Promise<{ ok: true; match: PvpMatchResult } | { ok: false; error: string }> {
+  if (!isUuid(input.leagueId)) {
+    return { ok: false, error: "League id must be a UUID." };
+  }
   const auth = await requireUser();
   if (!auth.user || !auth.supabase) {
     return { ok: false, error: auth.error ?? "Sign in required." };

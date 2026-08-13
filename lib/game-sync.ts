@@ -8,6 +8,7 @@ import { saveWrestler } from "@/lib/saveWrestler";
 import { loadWrestler } from "@/lib/wrestlers";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { replaceCareerId } from "@/lib/career-slots";
+import { isUuid } from "@/lib/league";
 import { syncLeagueRosterToCloud } from "@/lib/league-actions";
 
 let canPersist = false;
@@ -28,17 +29,19 @@ export async function persistGameToSupabase(force = false) {
       useGameStore.getState().setActiveCareer(result.id, true);
     }
     const snapshot = getGameSnapshot();
-    void syncLeagueRosterToCloud({
-      leagueId: snapshot.activeLeagueId,
-      player: {
-        name: snapshot.wrestler.name,
-        weightClass: snapshot.wrestler.weightClass,
-        wins: snapshot.wrestler.record.wins,
-        losses: snapshot.wrestler.record.losses,
-        attributes: snapshot.wrestler.attributes,
-      },
-      roster: snapshot.leagueRoster,
-    });
+    if (isUuid(snapshot.activeLeagueId)) {
+      void syncLeagueRosterToCloud({
+        leagueId: snapshot.activeLeagueId,
+        player: {
+          name: snapshot.wrestler.name,
+          weightClass: snapshot.wrestler.weightClass,
+          wins: snapshot.wrestler.record.wins,
+          losses: snapshot.wrestler.record.losses,
+          attributes: snapshot.wrestler.attributes,
+        },
+        roster: snapshot.leagueRoster,
+      });
+    }
     return result;
   }
   if (result.error !== "Sign in required to save." && result.error !== "Supabase is not configured.") {

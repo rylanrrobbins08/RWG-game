@@ -157,17 +157,24 @@ function mulberry32(seed: number) {
   };
 }
 
-export function makeLeagueId(name: string) {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 24);
-  const suffix = (hashString(`${name}|${Date.now()}`) % 10000)
-    .toString()
-    .padStart(4, "0");
-  return `${slug || "league"}-${suffix}`;
+export function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+export function makeLeagueId(_name = "") {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    const rng = mulberry32(hashString(`${_name}|${Date.now()}`));
+    const hex = "0123456789abcdef";
+    let id = "";
+    for (let i = 0; i < 32; i += 1) {
+      id += hex[Math.floor(rng() * 16)];
+    }
+    return `${id.slice(0, 8)}-${id.slice(8, 12)}-4${id.slice(13, 16)}-a${id.slice(17, 20)}-${id.slice(20, 32)}`;
+  }
 }
 
 /** Short 6-character code friends can type to join the same league. */
