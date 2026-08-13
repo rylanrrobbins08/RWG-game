@@ -125,6 +125,20 @@ async function requireUser() {
 
 type SupabaseServer = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
+function stampMemberInsert<T extends Record<string, unknown>>(row: T) {
+  const now = new Date().toISOString();
+  const rest: Record<string, unknown> = { ...row };
+  delete rest.created_at;
+  return {
+    ...rest,
+    created_at: now,
+    updated_at:
+      typeof rest.updated_at === "string" && rest.updated_at.length > 0
+        ? rest.updated_at
+        : now,
+  };
+}
+
 async function ensureWeightClassBots(
   supabase: SupabaseServer,
   leagueId: string,
@@ -159,11 +173,12 @@ async function ensureWeightClassBots(
     attributes: bot.attributes as unknown as Json,
     is_bot: true,
     tier: bot.tier ?? "high",
-    created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }));
 
-  const { error } = await supabase.from("league_members").insert(rows);
+  const { error } = await supabase
+    .from("league_members")
+    .insert(rows.map((row) => stampMemberInsert(row)));
   if (error && error.code !== "23505") {
     console.warn("ensureWeightClassBots:", error.message);
   }
@@ -190,7 +205,6 @@ async function savePlayerMember(
     losses: player.losses,
     attributes: player.attributes as unknown as Json,
     is_bot: false,
-    created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
@@ -218,7 +232,9 @@ async function savePlayerMember(
     return error;
   }
 
-  const { error } = await supabase.from("league_members").insert(payload);
+  const { error } = await supabase
+    .from("league_members")
+    .insert(stampMemberInsert(payload));
   if (error?.code === "23505") return null;
   return error;
 }
@@ -513,11 +529,12 @@ export async function syncLeagueRosterToCloud(input: {
         attributes: bot.attributes as unknown as Json,
         is_bot: true,
         tier: bot.tier ?? "high",
-        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }));
     if (rows.length > 0) {
-      const { error } = await auth.supabase.from("league_members").insert(rows);
+      const { error } = await auth.supabase
+        .from("league_members")
+        .insert(rows.map((row) => stampMemberInsert(row)));
       if (error && error.code !== "23505") {
         return { ok: false, error: error.message };
       }
