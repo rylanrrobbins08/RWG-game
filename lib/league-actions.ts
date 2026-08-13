@@ -34,18 +34,12 @@ function newJoinCode() {
   return "ABC234";
 }
 
-function joinCodeFromRow(row: {
-  code?: string | null;
-  join_code?: string | null;
-}) {
-  const candidates = [row.join_code, row.code];
-  for (const raw of candidates) {
-    const code = normalizeLeagueCode(raw ?? "");
-    if (code && !isUuid(code) && code.length >= 4 && code.length <= 8) {
-      return code;
-    }
+function joinCodeFromRow(row: { code?: string | null }) {
+  const code = normalizeLeagueCode(row.code ?? "");
+  if (code && !isUuid(code) && code.length >= 4 && code.length <= 8) {
+    return code;
   }
-  return normalizeLeagueCode(row.code ?? row.join_code ?? "");
+  return code;
 }
 
 function toPlayerLeague(
@@ -53,7 +47,6 @@ function toPlayerLeague(
     id: string;
     name: string;
     code?: string | null;
-    join_code?: string | null;
     created_by: string | null;
   },
   userId: string,
@@ -275,44 +268,17 @@ export async function createLeagueOnline(
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const joinCode = newJoinCode();
-    const leagueId = crypto.randomUUID();
-    const row = {
-      id: leagueId,
-      name: trimmed,
-      code: joinCode,
-      join_code: joinCode,
-      created_by: auth.user.id,
-      is_open: true,
-    };
-
-    let inserted = await auth.supabase
+    const inserted = await auth.supabase
       .from("leagues")
-      .insert(row)
-      .select("id, name, code, join_code, created_by")
+      .insert({
+        id: crypto.randomUUID(),
+        name: trimmed,
+        code: joinCode,
+        created_by: auth.user.id,
+        is_open: true,
+      })
+      .select("id, name, code, created_by")
       .single();
-
-    if (inserted.error && /join_code/i.test(inserted.error.message)) {
-      const { join_code: _ignored, ...withoutJoinCode } = row;
-      inserted = await auth.supabase
-        .from("leagues")
-        .insert(withoutJoinCode)
-        .select("id, name, code, created_by")
-        .single();
-    }
-
-    if (inserted.error && /uuid/i.test(inserted.error.message)) {
-      inserted = await auth.supabase
-        .from("leagues")
-        .insert({
-          id: leagueId,
-          name: trimmed,
-          join_code: joinCode,
-          created_by: auth.user.id,
-          is_open: true,
-        })
-        .select("id, name, join_code, created_by")
-        .single();
-    }
 
     if (!inserted.error && inserted.data) {
       if (!isUuid(inserted.data.id)) {
@@ -371,7 +337,6 @@ export async function joinLeagueOnline(
     id: string;
     name: string;
     code?: string | null;
-    join_code?: string | null;
     created_by: string | null;
   } | null = null;
 
@@ -391,22 +356,13 @@ export async function joinLeagueOnline(
     if (!normalized || isUuid(normalized)) {
       return { ok: false, error: "Enter a short join code like ABC234." };
     }
-    const byJoinCode = await auth.supabase
+    const byCode = await auth.supabase
       .from("leagues")
-      .select("id, name, code, join_code, created_by")
-      .eq("join_code", normalized)
+      .select("id, name, code, created_by")
+      .eq("code", normalized)
       .maybeSingle();
-    if (!byJoinCode.error && byJoinCode.data) {
-      league = byJoinCode.data;
-    } else {
-      const byCode = await auth.supabase
-        .from("leagues")
-        .select("id, name, code, created_by")
-        .eq("code", normalized)
-        .maybeSingle();
-      if (byCode.error) return { ok: false, error: byCode.error.message };
-      league = byCode.data;
-    }
+    if (byCode.error) return { ok: false, error: byCode.error.message };
+    league = byCode.data;
   } else {
     return { ok: false, error: "Pick an open circuit or enter a valid code." };
   }
