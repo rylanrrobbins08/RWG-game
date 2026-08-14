@@ -74,7 +74,7 @@ function rowToWrestler(
   },
   currentUserId: string,
 ): LeagueWrestler {
-  const isHuman = !row.is_bot && Boolean(row.user_id);
+  const isHuman = Boolean(row.user_id);
   const isPlayer = isHuman && row.user_id === currentUserId;
   const attrs =
     row.attributes && typeof row.attributes === "object"
@@ -239,6 +239,22 @@ async function savePlayerMember(
 const MEMBER_COLUMNS =
   "member_key, user_id, wrestler_name, school, weight_class, wins, losses, attributes, is_bot, tier";
 
+async function leaveOtherLeagues(
+  supabase: SupabaseServer,
+  userId: string,
+  keepLeagueId: string,
+) {
+  if (!isUuid(userId)) return;
+  const { error } = await supabase
+    .from("league_members")
+    .delete()
+    .eq("user_id", userId)
+    .neq("league_id", keepLeagueId);
+  if (error) {
+    console.warn("leaveOtherLeagues:", error.message);
+  }
+}
+
 async function loadRoster(
   supabase: SupabaseServer,
   leagueId: string,
@@ -247,21 +263,22 @@ async function loadRoster(
 ): Promise<LeagueWrestler[]> {
   await ensureWeightClassBots(supabase, leagueId, weightClass);
 
-  const humans = await supabase
+  const { data, error } = await supabase
     .from("league_members")
     .select(MEMBER_COLUMNS)
-    .eq("league_id", leagueId)
-    .eq("is_bot", false);
+    .eq("league_id", leagueId);
 
-  const bots = await supabase
-    .from("league_members")
-    .select(MEMBER_COLUMNS)
-    .eq("league_id", leagueId)
-    .eq("weight_class", weightClass)
-    .eq("is_bot", true);
+  if (error) {
+    console.warn("loadRoster:", error.message);
+    return [];
+  }
 
-  const rows = [...(humans.data ?? []), ...(bots.data ?? [])];
-  return rows.map((row) => rowToWrestler(row, userId));
+  const rows = data ?? [];
+  const humans = rows.filter((row) => Boolean(row.user_id));
+  const bots = rows.filter(
+    (row) => !row.user_id && row.weight_class === weightClass,
+  );
+  return [...humans, ...bots].map((row) => rowToWrestler(row, userId));
 }
 
 /** Browse every open league (presets + player-created). */
@@ -332,6 +349,7 @@ export async function createLeagueOnline(
           error: "League id must be a UUID. Check the leagues.id column type.",
         };
       }
+      await leaveOtherLeagues(auth.supabase, auth.user.id, inserted.data.id);
       const memberError = await savePlayerMember(
         auth.supabase,
         inserted.data.id,
@@ -408,6 +426,15 @@ export async function joinLeagueOnline(
       .maybeSingle();
     if (byCode.error) return { ok: false, error: byCode.error.message };
     league = byCode.data;
+    if (!league) {
+      const listed = await auth.supabase
+        .from("leagues")
+        .select("id, name, code, created_by");
+      league =
+        (listed.data ?? []).find(
+          (row) => normalizeLeagueCode(row.code ?? "") === normalized,
+        ) ?? null;
+    }
   } else {
     return { ok: false, error: "Pick an open circuit or enter a valid code." };
   }
@@ -421,6 +448,7 @@ export async function joinLeagueOnline(
     };
   }
 
+  await leaveOtherLeagues(auth.supabase, auth.user.id, league.id);
   const memberError = await savePlayerMember(
     auth.supabase,
     league.id,
@@ -496,6 +524,7 @@ export async function syncLeagueRosterToCloud(input: {
     return { ok: false, error: auth.error ?? "Sign in required." };
   }
 
+  await leaveOtherLeagues(auth.supabase, auth.user.id, input.leagueId);
   const memberError = await savePlayerMember(
     auth.supabase,
     input.leagueId,

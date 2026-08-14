@@ -38,6 +38,9 @@ export default function ScheduledMatch() {
   );
   const [pvpMatch, setPvpMatch] = useState<PvpMatchResult | null>(null);
   const [pvpReady, setPvpReady] = useState(false);
+  const [rosterReady, setRosterReady] = useState(
+    () => !isSupabaseConfigured || !isUuid(activeLeagueId),
+  );
   const appliedPvpKey = useRef<string | null>(null);
   const event = getCurrentWrestleEvent(week);
   const weekEvents = eventsForWeek(week);
@@ -50,16 +53,22 @@ export default function ScheduledMatch() {
     activeTournament?.eventId === event.id;
 
   useEffect(() => {
+    if (isUuid(activeLeagueId)) return;
     ensureWeightClassRoster();
-  }, [ensureWeightClassRoster, wrestler.weightClass]);
+  }, [ensureWeightClassRoster, wrestler.weightClass, activeLeagueId]);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !isUuid(activeLeagueId)) return;
+    if (!isSupabaseConfigured || !isUuid(activeLeagueId)) {
+      setRosterReady(true);
+      return;
+    }
     let cancelled = false;
+    setRosterReady(false);
     void loadLeagueRosterOnline(activeLeagueId, wrestler.weightClass).then(
       (result) => {
-        if (cancelled || !result.ok) return;
-        applyOnlineLeague(result.league, result.roster);
+        if (cancelled) return;
+        if (result.ok) applyOnlineLeague(result.league, result.roster);
+        setRosterReady(true);
       },
     );
     return () => {
@@ -69,10 +78,12 @@ export default function ScheduledMatch() {
 
   const dualOpponent = useMemo(() => {
     if (!event || isBracketEvent(event)) return null;
+    if (!rosterReady) return null;
     const picked = pickDualOpponent(
       leagueRoster,
       `${event.id}|dual|${wrestler.weightClass}`,
       wrestler.weightClass,
+      userId,
     );
     if (picked) {
       const bot = leagueBotToMatchOpponent(picked, wrestler.weightClass);
@@ -87,7 +98,7 @@ export default function ScheduledMatch() {
       };
     }
     return generateDualOpponent(event, wrestler.weightClass);
-  }, [event, wrestler.weightClass, leagueRoster]);
+  }, [event, wrestler.weightClass, leagueRoster, rosterReady, userId]);
 
   useEffect(() => {
     if (!event || !dualOpponent?.isHuman || !userId) {
@@ -198,6 +209,13 @@ export default function ScheduledMatch() {
   }
 
   if (!dualOpponent) {
+    if (!rosterReady) {
+      return (
+        <ArenaPage>
+          <p className="text-sm text-muted">Loading league opponents…</p>
+        </ArenaPage>
+      );
+    }
     return null;
   }
 

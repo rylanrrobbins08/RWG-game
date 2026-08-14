@@ -5,7 +5,7 @@ import {
   getEffectiveAttributes,
   OPEN_LEAGUES,
   STANDINGS_DISPLAY_COUNT,
-  topLeagueStandings,
+  standingsForDisplay,
   useGameStore,
 } from "@/lib/game-store";
 import type { LeagueWrestler, PlayerLeague, WrestlerScoutProfile } from "@/lib/league";
@@ -61,7 +61,6 @@ export default function LeagueDashboard() {
     (state) => state.ensureWeightClassRoster,
   );
   const joinLeague = useGameStore((state) => state.joinLeague);
-  const setActiveLeague = useGameStore((state) => state.setActiveLeague);
   const applyOnlineLeague = useGameStore((state) => state.applyOnlineLeague);
 
   const activeLeague =
@@ -82,16 +81,12 @@ export default function LeagueDashboard() {
   const [busy, setBusy] = useState(false);
   const [openLeagues, setOpenLeagues] = useState<PlayerLeague[]>(OPEN_LEAGUES);
   const [copied, setCopied] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isUuid(activeLeagueId)) return;
     ensureWeightClassRoster();
   }, [ensureWeightClassRoster, wrestler.weightClass, activeLeagueId]);
-
-  useEffect(() => {
-    setStatus(
-      `You're in ${activeLeague.name} · code ${activeLeague.code}. Tap a wrestler to scout attributes.`,
-    );
-  }, [activeLeague.name, activeLeague.code]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -113,16 +108,33 @@ export default function LeagueDashboard() {
       );
       if (cancelled || !result.ok) return;
       applyOnlineLeague(result.league, result.roster);
+      setLastRefresh(
+        new Date().toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
+      );
     }
 
     void refreshRoster();
     const timer = window.setInterval(() => {
       void refreshRoster();
-    }, 12000);
+    }, 4000);
+
+    function onVisible() {
+      if (document.visibilityState === "visible") {
+        void refreshRoster();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, [activeLeagueId, applyOnlineLeague, wrestler.weightClass]);
 
@@ -143,7 +155,7 @@ export default function LeagueDashboard() {
         attributes: playerAttrs,
       };
     });
-    return topLeagueStandings(synced, STANDINGS_DISPLAY_COUNT);
+    return standingsForDisplay(synced, STANDINGS_DISPLAY_COUNT);
   }, [
     leagueRoster,
     wrestler.name,
@@ -183,8 +195,29 @@ export default function LeagueDashboard() {
 
   const openToJoin = useMemo(() => {
     const joined = new Set(playerLeagues.map((league) => league.id));
-    return openLeagues.filter((league) => !joined.has(league.id));
+    return openLeagues.filter(
+      (league) => !joined.has(league.id) && isUuid(league.id),
+    );
   }, [openLeagues, playerLeagues]);
+
+  useEffect(() => {
+    const names = humanMembers.map((member) =>
+      member.isPlayer ? `${member.name} (You)` : member.name,
+    );
+    if (names.length > 1) {
+      setStatus(
+        `${activeLeague.name} · ${names.length} players: ${names.join(", ")}.`,
+      );
+      return;
+    }
+    setStatus(
+      `You're in ${activeLeague.name} · code ${activeLeague.code}. Share it so friends appear here.`,
+    );
+  }, [
+    activeLeague.code,
+    activeLeague.name,
+    humanMembers,
+  ]);
 
   function openScout(profile: WrestlerScoutProfile) {
     setScout(profile);
@@ -263,7 +296,7 @@ export default function LeagueDashboard() {
       }
     });
     setStatus(
-      `Created ${online.league.name}. Share code ${online.league.code} so friends can join.`,
+      `Created ${online.league.name}. Share code ${online.league.code} — joining this room leaves any other league.`,
     );
     setModal(null);
   }
@@ -283,7 +316,16 @@ export default function LeagueDashboard() {
     }
     applyOnlineLeague(online.league, online.roster);
     persistGameNow();
-    setStatus(`Joined ${online.league.name}. Everyone in this league shares the same standings.`);
+    const names = online.roster
+      .filter(isHumanLeagueMember)
+      .map((member) =>
+        member.isPlayer ? `${wrestler.name} (You)` : member.name,
+      );
+    setStatus(
+      names.length > 1
+        ? `Joined ${online.league.name}. Players here: ${names.join(", ")}.`
+        : `Joined ${online.league.name}. You're the first player — share the code so friends show up here.`,
+    );
     setModal(null);
   }
 
@@ -299,33 +341,23 @@ export default function LeagueDashboard() {
     }
     if (hasOnlineRoster(online)) {
       applyOnlineLeague(online.league, online.roster);
+      const names = online.roster
+        .filter(isHumanLeagueMember)
+        .map((member) =>
+          member.isPlayer ? `${wrestler.name} (You)` : member.name,
+        );
+      persistGameNow();
+      setStatus(
+        names.length > 1
+          ? `Joined ${online.league.name}. Players here: ${names.join(", ")}.`
+          : `Joined ${online.league.name}. You're the first player in this room.`,
+      );
+      setModal(null);
+      return;
     }
     persistGameNow();
     setStatus(`Joined ${online.league.name}. Standings refreshed.`);
     setModal(null);
-  }
-
-  async function handleSwitchLeague(leagueId: string) {
-    if (isSupabaseConfigured) {
-      setBusy(true);
-      const online = await loadLeagueRosterOnline(
-        leagueId,
-        wrestler.weightClass,
-      );
-      setBusy(false);
-      if (online.ok) {
-        applyOnlineLeague(online.league, online.roster);
-        persistGameNow();
-        setStatus(`Switched to ${online.league.name}. Standings updated.`);
-        return;
-      }
-    }
-    const result = setActiveLeague(leagueId);
-    if (!result.ok) {
-      setStatus(result.error);
-      return;
-    }
-    setStatus(`Switched to ${result.league.name}. Standings updated.`);
   }
 
   return (
@@ -389,62 +421,58 @@ export default function LeagueDashboard() {
       </section>
 
       <section className="rwg-card">
-        <p className="rwg-label">Members</p>
+        <p className="rwg-label">Who's here</p>
         <h2 className="mt-1 font-display text-xl font-semibold text-foreground">
           Players in this league
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Everyone who joined with the code appears here, with the same
-          standings.
+          {humanMembers.length}{" "}
+          {humanMembers.length === 1 ? "player" : "players"} right now
+          {lastRefresh ? ` · updated ${lastRefresh}` : ""}. You can only be in
+          one league at a time.
         </p>
-        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-          {humanMembers.map((member) => (
-            <li
-              key={member.userId ?? member.id}
-              className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2.5 ${
-                member.isPlayer
-                  ? "border-accent/50 bg-accent/10"
-                  : "border-panel-border bg-background/40"
-              }`}
-            >
-              <span>
-                <span className="block font-medium text-foreground">
-                  {member.name}
-                  {member.isPlayer ? " (You)" : ""}
-                </span>
-                <span className="text-xs text-muted">
-                  {member.weightClass} lbs · {member.wins}-{member.losses}
-                </span>
-              </span>
-              <span className="text-[10px] uppercase tracking-[0.12em] text-accent">
-                Player
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {playerLeagues.length > 1 && (
-        <div className="flex flex-wrap gap-2">
-          {playerLeagues.map((league) => {
-            const active = league.id === activeLeagueId;
-            return (
-              <button
-                key={league.id}
-                type="button"
-                onClick={() => handleSwitchLeague(league.id)}
-                className={`rounded-md border px-3 py-1.5 text-xs uppercase tracking-[0.1em] transition ${
-                  active
-                    ? "border-accent bg-accent/15 text-accent"
-                    : "border-panel-border bg-panel/60 text-muted hover:border-accent/50 hover:text-foreground"
+        {humanMembers.length === 0 ? (
+          <p className="mt-4 rounded-md border border-panel-border bg-background/40 px-3 py-3 text-sm text-muted">
+            Nobody is listed yet. Join or create a shared league, then share the
+            code so friends appear here.
+          </p>
+        ) : (
+          <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+            {humanMembers.map((member) => (
+              <li
+                key={member.userId ?? member.id}
+                className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2.5 ${
+                  member.isPlayer
+                    ? "border-accent/50 bg-accent/10"
+                    : "border-panel-border bg-background/40"
                 }`}
               >
-                {league.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
+                <span>
+                  <span className="block font-medium text-foreground">
+                    {member.name}
+                    {member.isPlayer ? " (You)" : ""}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {member.weightClass} lbs · {member.wins}-{member.losses}
+                  </span>
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.12em] text-accent">
+                  {member.isPlayer ? "You" : "Player"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {humanMembers.length === 1 && (
+          <p className="mt-3 text-sm text-muted">
+            Waiting for friends. Share code{" "}
+            <span className="font-mono tracking-widest text-foreground">
+              {activeLeague.code}
+            </span>{" "}
+            — they show up here as soon as they join.
+          </p>
+        )}
+      </section>
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
         <section className="rwg-card">
@@ -453,8 +481,8 @@ export default function LeagueDashboard() {
             Season Standings
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Top {STANDINGS_DISPLAY_COUNT} of {fieldSize} in the{" "}
-            {wrestler.weightClass} lbs class — tap a name to scout.
+            Real players are listed first, then the top of the{" "}
+            {wrestler.weightClass} lbs field ({fieldSize} wrestlers).
           </p>
 
           <div className="mt-4 overflow-x-auto">
@@ -627,8 +655,8 @@ export default function LeagueDashboard() {
                   />
                 </label>
                 <p className="text-xs text-muted">
-                  Saves the league to Supabase and gives you a 6-character join
-                  code to share.
+                  Creates a shared room and a 6-character join code. You can
+                  only be in one league — this replaces your current one.
                 </p>
                 <button
                   type="submit"
@@ -640,10 +668,36 @@ export default function LeagueDashboard() {
               </form>
             ) : (
               <div className="mt-4 space-y-5">
+                <form onSubmit={handleJoinByCode} className="space-y-3">
+                  <label className="block text-sm text-muted">
+                    Friend&apos;s join code
+                    <input
+                      type="text"
+                      value={joinCode}
+                      onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                      placeholder="ABC234"
+                      maxLength={8}
+                      autoFocus
+                      className="mt-1.5 w-full rounded-md border border-panel-border bg-background/60 px-3 py-2.5 font-mono text-sm uppercase tracking-widest text-foreground outline-none placeholder:text-muted/60 focus:border-accent"
+                    />
+                  </label>
+                  <p className="text-xs text-muted">
+                    You can only be in one league. Joining this room leaves your
+                    current one and shows every player already here.
+                  </p>
+                  <button
+                    type="submit"
+                    disabled={busy || !joinCode.trim()}
+                    className="rwg-btn rwg-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {busy ? "Joining…" : "Join with code"}
+                  </button>
+                </form>
+
                 {openToJoin.length > 0 && (
                   <div>
                     <p className="text-xs uppercase tracking-[0.12em] text-muted">
-                      Browse open
+                      Or browse open
                     </p>
                     <ul className="mt-2 space-y-2">
                       {openToJoin.map((league) => (
@@ -666,51 +720,6 @@ export default function LeagueDashboard() {
                               Join
                             </span>
                           </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <form onSubmit={handleJoinByCode} className="space-y-3">
-                  <label className="block text-sm text-muted">
-                    Or enter a code
-                    <input
-                      type="text"
-                      value={joinCode}
-                      onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                    placeholder="ABC123"
-                    maxLength={8}
-                      className="mt-1.5 w-full rounded-md border border-panel-border bg-background/60 px-3 py-2.5 font-mono text-sm uppercase tracking-widest text-foreground outline-none placeholder:text-muted/60 focus:border-accent"
-                    />
-                  </label>
-                  <p className="text-xs text-muted">
-                    Use a code from another player, or join a listed circuit.
-                  </p>
-                  <button
-                    type="submit"
-                    disabled={busy || !joinCode.trim()}
-                    className="rwg-btn rwg-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {busy ? "Joining…" : "Join with code"}
-                  </button>
-                </form>
-
-                {playerLeagues.length > 0 && (
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.12em] text-muted">
-                      Your leagues
-                    </p>
-                    <ul className="mt-2 space-y-1.5">
-                      {playerLeagues.map((league) => (
-                        <li
-                          key={league.id}
-                          className="flex items-center justify-between gap-2 text-sm text-muted"
-                        >
-                          <span className="text-foreground">{league.name}</span>
-                          <span className="font-mono text-xs tracking-wider">
-                            {league.code}
-                          </span>
                         </li>
                       ))}
                     </ul>

@@ -679,6 +679,17 @@ export function topLeagueStandings(
   return rankLeagueStandings(roster).slice(0, limit);
 }
 
+/** Standings with every real player listed first so friends never hide behind bots. */
+export function standingsForDisplay(
+  roster: LeagueWrestler[],
+  limit = STANDINGS_DISPLAY_COUNT,
+): LeagueStanding[] {
+  const ranked = rankLeagueStandings(roster);
+  const humans = ranked.filter(isHumanLeagueMember);
+  const bots = ranked.filter((row) => !isHumanLeagueMember(row));
+  return [...humans, ...bots].slice(0, Math.max(limit, humans.length));
+}
+
 export function isLeagueRoster(value: unknown): value is LeagueWrestler[] {
   if (!Array.isArray(value)) return false;
   return value.every(
@@ -785,9 +796,15 @@ export function pickDualOpponent(
   roster: LeagueWrestler[],
   seed: string,
   weightClass?: number,
+  currentUserId?: string | null,
 ): LeagueWrestler | null {
   const normalized = normalizeLeagueRoster(roster);
-  const humanOpponent = pickHumanDualOpponent(normalized, seed, weightClass);
+  const humanOpponent = pickHumanDualOpponent(
+    normalized,
+    seed,
+    weightClass,
+    currentUserId,
+  );
   if (humanOpponent) return humanOpponent;
 
   const bots = normalized.filter((m) => !m.isPlayer && !m.userId);
@@ -803,21 +820,29 @@ export function pickHumanDualOpponent(
   roster: LeagueWrestler[],
   seed: string,
   weightClass?: number,
+  currentUserId?: string | null,
 ): LeagueWrestler | null {
-  const humans = normalizeLeagueRoster(roster).filter((member) => {
-    if (!isHumanLeagueMember(member)) return false;
-    if (
-      weightClass != null &&
-      member.weightClass &&
-      member.weightClass !== weightClass
-    ) {
-      return false;
-    }
-    return true;
-  });
+  const humans = normalizeLeagueRoster(roster).filter(isHumanLeagueMember);
   if (humans.length < 2) return null;
 
-  const sorted = [...humans].sort((a, b) =>
+  const isYou = (member: LeagueWrestler) =>
+    Boolean(
+      member.isPlayer ||
+        (currentUserId && member.userId && member.userId === currentUserId),
+    );
+
+  const sameWeight = humans.filter(
+    (member) =>
+      weightClass == null ||
+      !member.weightClass ||
+      member.weightClass === weightClass,
+  );
+  const pool = sameWeight.length >= 2 ? sameWeight : humans;
+  const others = pool.filter((member) => !isYou(member));
+  if (others.length === 0) return null;
+  if (others.length === 1) return others[0];
+
+  const sorted = [...pool].sort((a, b) =>
     (a.userId ?? a.id).localeCompare(b.userId ?? b.id),
   );
   const rotate = hashString(seed) % sorted.length;
@@ -826,10 +851,10 @@ export function pickHumanDualOpponent(
   for (let i = 0; i + 1 < rotated.length; i += 2) {
     const a = rotated[i];
     const b = rotated[i + 1];
-    if (a.isPlayer) return b;
-    if (b.isPlayer) return a;
+    if (isYou(a) && !isYou(b)) return b;
+    if (isYou(b) && !isYou(a)) return a;
   }
-  return null;
+  return others[0] ?? null;
 }
 
 export function tierLabel(tier?: BotTier): string {

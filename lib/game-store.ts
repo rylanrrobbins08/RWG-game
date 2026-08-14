@@ -65,6 +65,7 @@ export {
   STANDINGS_DISPLAY_COUNT,
   WEIGHT_CLASS_BOT_COUNT,
   rankLeagueStandings,
+  standingsForDisplay,
   tierLabel,
   topLeagueStandings,
 } from "@/lib/league";
@@ -1025,7 +1026,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
 
     set({
-      playerLeagues: [...state.playerLeagues, league],
+      playerLeagues: [league],
       activeLeagueId: id,
       leagueRoster,
       leagueRosterCache: cache,
@@ -1055,12 +1056,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     }
 
-    const alreadyMember = state.playerLeagues.some(
-      (league) => league.id === target!.id,
-    );
-    const playerLeagues = alreadyMember
-      ? state.playerLeagues
-      : [...state.playerLeagues, { ...target }];
+    const playerLeagues = [{ ...target }];
 
     const prevKey = rosterStorageKey(
       state.activeLeagueId,
@@ -1127,12 +1123,6 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   applyOnlineLeague: (league, roster) =>
     set((state) => {
-      const already = state.playerLeagues.some((item) => item.id === league.id);
-      const playerLeagues = already
-        ? state.playerLeagues.map((item) =>
-            item.id === league.id ? league : item,
-          )
-        : [...state.playerLeagues, league];
       const prevKey = rosterStorageKey(
         state.activeLeagueId,
         state.wrestler.weightClass,
@@ -1141,10 +1131,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...state.leagueRosterCache,
         [prevKey]: state.leagueRoster,
       };
+      const nextRoster =
+        Array.isArray(roster) && roster.length > 0
+          ? roster
+          : syncRosterPlayer([], state.wrestler);
       return {
-        playerLeagues,
+        playerLeagues: [league],
         activeLeagueId: league.id,
-        ...withActiveRoster(league.id, state.wrestler, roster, cache),
+        ...withActiveRoster(league.id, state.wrestler, nextRoster, cache),
       };
     }),
 
@@ -1166,7 +1160,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         .filter((id) => Boolean(getTrainerById(id)))
         .slice(0, MAX_ACTIVE_TRAINERS);
 
-      const playerLeagues =
+      const listedLeagues =
         Array.isArray(save.playerLeagues) && save.playerLeagues.length > 0
           ? normalizePlayerLeagues(save.playerLeagues)
           : state.playerLeagues.length > 0
@@ -1175,10 +1169,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       const activeLeagueId =
         (save.activeLeagueId &&
-          playerLeagues.some((league) => league.id === save.activeLeagueId) &&
+          listedLeagues.some((league) => league.id === save.activeLeagueId) &&
           save.activeLeagueId) ||
-        playerLeagues[0]?.id ||
+        listedLeagues[0]?.id ||
         DEFAULT_LEAGUE.id;
+
+      const playerLeagues = [
+        listedLeagues.find((league) => league.id === activeLeagueId) ??
+          listedLeagues[0] ??
+          DEFAULT_LEAGUE,
+      ];
 
       const leagueRosterCache = normalizeRosterCache(
         save.leagueRosterCache ?? state.leagueRosterCache,
