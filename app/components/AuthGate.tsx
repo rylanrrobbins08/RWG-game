@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { storeAuthUserId } from "@/lib/supabase/auth";
 import LoginScreen from "./LoginScreen";
@@ -16,10 +16,11 @@ function isEntryPath(pathname: string) {
 
 /**
  * Keep signed-out users on login for game routes.
- * Home, auth, and create always render so `/` cannot get stuck behind the gate.
+ * Signed-in users on /auth are sent home immediately.
  */
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
+  const router = useRouter();
   const [loggedIn, setLoggedIn] = useState(!isSupabaseConfigured);
 
   useEffect(() => {
@@ -62,6 +63,20 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       subscription?.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (loggedIn && pathname === "/auth") {
+      router.replace("/");
+    }
+  }, [loggedIn, pathname, router]);
+
+  if (loggedIn && pathname === "/auth") {
+    return (
+      <p className="flex min-h-full flex-1 items-center justify-center px-5 text-sm text-muted">
+        Signed in — opening wrestler select…
+      </p>
+    );
+  }
 
   if (!loggedIn && !isEntryPath(pathname)) {
     return <LoginScreen />;

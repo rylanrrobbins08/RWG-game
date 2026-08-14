@@ -1,8 +1,13 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { signInWithEmail, signUpWithEmail } from "@/lib/supabase/auth";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import {
+  getCurrentUser,
+  signInWithEmail,
+  signUpWithEmail,
+  storeAuthUserId,
+} from "@/lib/supabase/auth";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
 
 type Mode = "login" | "signup";
 
@@ -18,7 +23,17 @@ export default function AuthForm() {
 
   const configured = isSupabaseConfigured;
 
-  function goToWrestlerSelect() {
+  async function goToWrestlerSelect() {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data } = await supabase.auth.getSession();
+      const user = data.session?.user ?? (await getCurrentUser());
+      if (!user) {
+        setError("Signed in, but the session did not save. Try again.");
+        return;
+      }
+      storeAuthUserId(user.id);
+    }
     window.location.assign("/");
   }
 
@@ -51,13 +66,13 @@ export default function AuthForm() {
           return;
         }
         if (created.session) {
-          goToWrestlerSelect();
+          await goToWrestlerSelect();
           return;
         }
 
         const signedIn = await signInWithEmail(trimmedEmail, password);
         if (signedIn.ok && signedIn.session) {
-          goToWrestlerSelect();
+          await goToWrestlerSelect();
           return;
         }
 
@@ -75,8 +90,12 @@ export default function AuthForm() {
         setError(result.error);
         return;
       }
+      if (!result.session) {
+        setError("Could not start a session. Try again.");
+        return;
+      }
 
-      goToWrestlerSelect();
+      await goToWrestlerSelect();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed. Try again.");
     } finally {
