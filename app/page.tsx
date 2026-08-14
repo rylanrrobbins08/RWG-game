@@ -1,32 +1,14 @@
-import { redirect } from "next/navigation";
-import WrestlerSelect from "./components/WrestlerSelect";
-import { listWrestlersFromCloud } from "@/lib/wrestler-actions";
-import { getOptionalUser } from "@/lib/supabase/session";
+import Link from "next/link";
 
-export const dynamic = "force-dynamic";
-
-/** Entry: login if signed out, wrestler select if signed in. */
-export default async function Home() {
-  const user = await getOptionalUser().catch(() => null);
-  if (!user) {
-    redirect("/auth");
-  }
-
-  try {
-    const result = await listWrestlersFromCloud();
-    return (
-      <WrestlerSelect
-        initialWrestlers={result.data}
-        loadError={result.ok ? null : result.error}
-      />
-    );
-  } catch (error) {
-    console.error("Home page:", error);
-    return (
-      <WrestlerSelect
-        initialWrestlers={[]}
-        loadError="Could not load wrestlers."
-      />
-    );
-  }
+export default function Home() {
+  return (
+    <main className="flex min-h-full flex-1 flex-col items-center justify-center gap-6 px-5 py-12">
+      <h1 className="font-display text-3xl font-semibold uppercase tracking-wide text-foreground">
+        RWG is online
+      </h1>
+      <Link href="/auth" className="rwg-btn rwg-btn-primary">
+        Go to login
+      </Link>
+    </main>
+  );
 }
