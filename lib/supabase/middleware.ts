@@ -2,30 +2,37 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "./env";
 
-const PUBLIC_PATHS = ["/", "/auth", "/create"];
+const PUBLIC_PREFIXES = ["/auth", "/create"];
 
 function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some(
+  if (pathname === "/" || pathname === "") return true;
+  return PUBLIC_PREFIXES.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
 }
 
+function passThrough(request: NextRequest) {
+  return NextResponse.next({ request });
+}
+
+function homeUrl(request: NextRequest) {
+  return new URL("/", request.url);
+}
+
 /**
  * Refresh the auth session and protect main app routes.
- * Never throws — missing/invalid Supabase config must not take the app down.
+ * The home page is always allowed through so `/` cannot 404 from auth.
  */
 export async function updateSession(request: NextRequest) {
-  const response = NextResponse.next({
-    request,
-  });
-
-  const env = getSupabaseEnv();
-  if (!env) {
-    return response;
-  }
+  const { pathname } = request.nextUrl;
 
   try {
-    let supabaseResponse = response;
+    const env = getSupabaseEnv();
+    if (!env) {
+      return passThrough(request);
+    }
+
+    let supabaseResponse = passThrough(request);
 
     const supabase = createServerClient(env.url, env.anonKey, {
       cookies: {
@@ -36,7 +43,7 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
           });
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = passThrough(request);
           cookiesToSet.forEach(({ name, value, options }) => {
             supabaseResponse.cookies.set(name, value, options);
           });
@@ -48,25 +55,20 @@ export async function updateSession(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const { pathname } = request.nextUrl;
-
-    if (!user && !isPublicPath(pathname)) {
-      const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = "/";
-      loginUrl.search = "";
-      return NextResponse.redirect(loginUrl);
+    if (isPublicPath(pathname)) {
+      if (user && pathname === "/auth") {
+        return NextResponse.redirect(homeUrl(request));
+      }
+      return supabaseResponse;
     }
 
-    if (user && pathname === "/auth") {
-      const selectUrl = request.nextUrl.clone();
-      selectUrl.pathname = "/";
-      selectUrl.search = "";
-      return NextResponse.redirect(selectUrl);
+    if (!user) {
+      return NextResponse.redirect(homeUrl(request));
     }
 
     return supabaseResponse;
   } catch (error) {
-    console.error("Auth middleware failed:", error);
-    return response;
+    console.error("Auth proxy failed:", error);
+    return passThrough(request);
   }
 }

@@ -1,20 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { storeAuthUserId } from "@/lib/supabase/auth";
 import LoginScreen from "./LoginScreen";
 
+function isEntryPath(pathname: string) {
+  return (
+    pathname === "/" ||
+    pathname === "/auth" ||
+    pathname.startsWith("/create")
+  );
+}
+
 /**
- * Login / Sign Up is the first screen when there is no session.
- * Missing or broken Supabase config shows the form with a clear message — never a crash.
+ * Keep signed-out users on login for game routes.
+ * Home, auth, and create always render so `/` cannot get stuck behind the gate.
  */
 export default function AuthGate({ children }: { children: React.ReactNode }) {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const pathname = usePathname() ?? "/";
+  const [loggedIn, setLoggedIn] = useState(!isSupabaseConfigured);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
-      setLoggedIn(false);
+      setLoggedIn(true);
       return;
     }
 
@@ -53,7 +63,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  if (!loggedIn) {
+  if (!loggedIn && !isEntryPath(pathname)) {
     return <LoginScreen />;
   }
 
