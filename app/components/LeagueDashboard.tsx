@@ -9,10 +9,11 @@ import {
   useGameStore,
 } from "@/lib/game-store";
 import type { LeagueWrestler, PlayerLeague, WrestlerScoutProfile } from "@/lib/league";
-import { isHumanLeagueMember, isUuid, normalizeLeagueMember } from "@/lib/league";
+import { isHumanLeagueMember, isJoinedLeague, isUuid, normalizeLeagueMember } from "@/lib/league";
 import {
   createLeagueOnline,
   joinLeagueOnline,
+  leaveLeagueOnline,
   listOpenLeagues,
   loadLeagueRosterOnline,
 } from "@/lib/league-actions";
@@ -62,11 +63,13 @@ export default function LeagueDashboard() {
   );
   const joinLeague = useGameStore((state) => state.joinLeague);
   const applyOnlineLeague = useGameStore((state) => state.applyOnlineLeague);
+  const leaveLeague = useGameStore((state) => state.leaveLeague);
 
   const activeLeague =
     playerLeagues.find((league) => league.id === activeLeagueId) ??
     playerLeagues[0] ??
     OPEN_LEAGUES[0];
+  const inLeague = isJoinedLeague(activeLeague);
 
   const [messages, setMessages] = useState(INITIAL_CHAT);
   const [draft, setDraft] = useState("");
@@ -204,6 +207,10 @@ export default function LeagueDashboard() {
     const names = humanMembers.map((member) =>
       member.isPlayer ? `${member.name} (You)` : member.name,
     );
+    if (!inLeague) {
+      setStatus("Create or join a league to wrestle friends. You can only be in one at a time.");
+      return;
+    }
     if (names.length > 1) {
       setStatus(
         `${activeLeague.name} · ${names.length} players: ${names.join(", ")}.`,
@@ -217,6 +224,7 @@ export default function LeagueDashboard() {
     activeLeague.code,
     activeLeague.name,
     humanMembers,
+    inLeague,
   ]);
 
   function openScout(profile: WrestlerScoutProfile) {
@@ -277,6 +285,10 @@ export default function LeagueDashboard() {
 
   async function handleCreateLeague(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inLeague) {
+      setFormError("Leave your current league before creating a new one.");
+      return;
+    }
     if (!isSupabaseConfigured) {
       setFormError(onlineRequired);
       return;
@@ -303,6 +315,10 @@ export default function LeagueDashboard() {
 
   async function handleJoinByCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inLeague) {
+      setFormError("Leave your current league before joining another.");
+      return;
+    }
     if (!isSupabaseConfigured) {
       setFormError(onlineRequired);
       return;
@@ -330,6 +346,10 @@ export default function LeagueDashboard() {
   }
 
   async function handleJoinOpen(leagueId: string) {
+    if (inLeague) {
+      setFormError("Leave your current league before joining another.");
+      return;
+    }
     setBusy(true);
     const online = isSupabaseConfigured
       ? await joinLeagueOnline({ leagueId }, playerSnapshot())
@@ -360,6 +380,31 @@ export default function LeagueDashboard() {
     setModal(null);
   }
 
+  async function handleLeaveLeague() {
+    if (
+      !window.confirm(
+        `Leave ${activeLeague.name}? Friends in this room will no longer see you, and you can create or join a new league.`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    if (isSupabaseConfigured && isUuid(activeLeagueId)) {
+      const result = await leaveLeagueOnline();
+      if (!result.ok) {
+        setBusy(false);
+        setStatus(result.error);
+        return;
+      }
+    }
+    leaveLeague();
+    persistGameNow();
+    setBusy(false);
+    setModal(null);
+    setStatus("You left the league. Create or join a new one.");
+  }
+
   return (
     <ArenaPage>
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -380,20 +425,33 @@ export default function LeagueDashboard() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => openModal("join")}
-            className="rwg-btn rwg-btn-ghost"
-          >
-            Join League
-          </button>
-          <button
-            type="button"
-            onClick={() => openModal("create")}
-            className="rwg-btn rwg-btn-primary"
-          >
-            Create League
-          </button>
+          {inLeague ? (
+            <button
+              type="button"
+              onClick={() => void handleLeaveLeague()}
+              disabled={busy}
+              className="rounded-md border border-danger/50 bg-danger/15 px-3 py-2 font-display text-xs uppercase tracking-[0.1em] text-danger-soft transition hover:border-danger hover:bg-danger/25 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy ? "Leaving…" : "Leave League"}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => openModal("join")}
+                className="rwg-btn rwg-btn-ghost"
+              >
+                Join League
+              </button>
+              <button
+                type="button"
+                onClick={() => openModal("create")}
+                className="rwg-btn rwg-btn-primary"
+              >
+                Create League
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -601,7 +659,7 @@ export default function LeagueDashboard() {
         <WrestlerScoutModal profile={scout} onClose={() => setScout(null)} />
       )}
 
-      {modal && (
+      {modal && !inLeague && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center"
           role="dialog"

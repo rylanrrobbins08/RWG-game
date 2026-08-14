@@ -405,6 +405,7 @@ type GameState = {
     leagueId: string,
   ) => { ok: true; league: PlayerLeague } | { ok: false; error: string };
   applyOnlineLeague: (league: PlayerLeague, roster: LeagueWrestler[]) => void;
+  leaveLeague: () => void;
   setActiveCareer: (careerId: string | null, selected: boolean) => void;
   clearCareerSelection: () => void;
   hydrateFromSave: (save: {
@@ -1139,6 +1140,30 @@ export const useGameStore = create<GameState>((set, get) => ({
         playerLeagues: [league],
         activeLeagueId: league.id,
         ...withActiveRoster(league.id, state.wrestler, nextRoster, cache),
+      };
+    }),
+
+  leaveLeague: () =>
+    set((state) => {
+      const league = DEFAULT_LEAGUE;
+      const prevKey = rosterStorageKey(
+        state.activeLeagueId,
+        state.wrestler.weightClass,
+      );
+      const cache = {
+        ...state.leagueRosterCache,
+        [prevKey]: state.leagueRoster,
+      };
+      const leagueRoster = createLeagueRoster(
+        state.wrestler.name,
+        state.wrestler.weightClass,
+        state.wrestler.attributes,
+        league.id,
+      );
+      return {
+        playerLeagues: [{ ...league }],
+        activeLeagueId: league.id,
+        ...withActiveRoster(league.id, state.wrestler, leagueRoster, cache),
       };
     }),
 

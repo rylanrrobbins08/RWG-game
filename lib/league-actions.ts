@@ -471,6 +471,24 @@ export async function joinLeagueOnline(
   };
 }
 
+/** Remove this player from every league so they can create or join a new one. */
+export async function leaveLeagueOnline(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  const auth = await requireUser();
+  if (!auth.user || !auth.supabase) {
+    return { ok: false, error: auth.error ?? "Sign in required." };
+  }
+
+  const { error } = await auth.supabase
+    .from("league_members")
+    .delete()
+    .eq("user_id", auth.user.id);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 /** Shared standings + members for one league / weight class. */
 export async function loadLeagueRosterOnline(
   leagueId: string,

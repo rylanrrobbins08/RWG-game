@@ -117,6 +117,11 @@ export function isHumanLeagueMember(member: LeagueWrestler) {
   return Boolean(member.isPlayer || member.userId);
 }
 
+/** True when this is a created/joined room, not a local preset circuit. */
+export function isJoinedLeague(league: Pick<PlayerLeague, "id" | "createdByPlayer">) {
+  return isUuid(league.id) || league.createdByPlayer;
+}
+
 export function memberKeyForUserId(userId: string) {
   return `user:${userId}`;
 }
