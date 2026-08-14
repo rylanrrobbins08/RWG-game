@@ -15,16 +15,24 @@ function passThrough(request: NextRequest) {
   return NextResponse.next({ request });
 }
 
+function loginUrl(request: NextRequest) {
+  return new URL("/auth", request.url);
+}
+
 function homeUrl(request: NextRequest) {
   return new URL("/", request.url);
 }
 
 /**
- * Refresh the auth session and protect main app routes.
- * The home page is always allowed through so `/` cannot 404 from auth.
+ * Refresh the auth session and protect game routes.
+ * Never intercepts `/` — the home page handles login vs wrestler select.
  */
 export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (pathname === "/" || pathname === "") {
+    return passThrough(request);
+  }
 
   try {
     const env = getSupabaseEnv();
@@ -63,7 +71,7 @@ export async function updateSession(request: NextRequest) {
     }
 
     if (!user) {
-      return NextResponse.redirect(homeUrl(request));
+      return NextResponse.redirect(loginUrl(request));
     }
 
     return supabaseResponse;
